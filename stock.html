@@ -532,6 +532,8 @@
                 // 自动计算新成本
                 calculate();
 //           alert('数据导入成功！');
+				// 重置文件输入以允许重复选择同一文件
+                fileInput.value = '';
             } catch (error) {
                 console.error('导入失败:', error);
                 alert('文件格式错误，请选择正确的数据文件');
