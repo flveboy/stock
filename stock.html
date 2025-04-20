@@ -426,10 +426,23 @@
 <script>
     // 独立格式化方法
     function formatFee(value) {
-        if (isNaN(value)) return '0';
-        const absValue = Math.abs(value);
-        const formatted = absValue.toFixed(2);
-        return formatted.endsWith('.00') ? absValue.toFixed(0) : formatted.replace(/0$/, '');
+    	if (isNaN(value)) return '0';
+    	const isNegative = value < 0;
+    	const absValue = Math.abs(value); // 先取绝对值进行逻辑处理
+    	const formatted = absValue.toFixed(2); // 此处为无符号的字符串（如 "2313.00"）
+    	const endsWithZeroZero = formatted.endsWith('.00');
+    	let result;
+    	if (endsWithZeroZero) {
+     	   result = absValue.toFixed(0); // 去掉无意义的零和小数点
+   		 } else {
+        	result = formatted.replace(/\.?0+$/, ''); 
+       	 // 例如 "2313.40" → 替换末尾冗余的零 → "2313.4" 
+    	}
+    	// 最后根据符号添加负号
+    	if (isNegative) {
+       	 result = `-${result}`;
+    	}
+    	return result;
     }
 
     function formatCost(value) {
