@@ -665,8 +665,8 @@
             const stockCode = document.getElementById('stockCode').value || '';
             const originalCost = parseFloat(document.getElementById('originalCost').value) || 0;
             const originalShares = parseInt(document.getElementById('originalShares').value) || 0;
-            let totalBuyCost = 0, totalBuyShares = 0;
-            let totalSellIncome = 0, totalSellShares = 0;
+            let totalBuyCost = 0, totalBuyShares = 0, totalBuyAmount = 0;
+            let totalSellIncome = 0, totalSellShares = 0, totalSellAmount = 0;
 
             // ==== 买入计算 ====
             const buyTable = document.getElementById('buyTable');
@@ -689,6 +689,8 @@
                 updateCell(3, transferFee);
                 updateCell(4, totalFee);
 
+		// 累计买入数据
+            	totalBuyAmount += price * shares;   // 原始交易金额
                 // 累加成本
                 totalBuyCost += (price * shares) + commission + transferFee;
                 totalBuyShares += shares;
@@ -715,7 +717,9 @@
                 updateCell(3, transferFee);
                 updateCell(4, stampDuty);
                 updateCell(5, totalFee);
-
+		
+		// 累计卖出数据
+            	totalSellAmount += price * shares;  // 原始交易金额
                 // 累加收入
                 totalSellIncome += (price * shares) - totalFee;
                 totalSellShares += shares;
@@ -733,6 +737,10 @@
 
             const newCost = remainingShares > 0 ? remainingCost / remainingShares : 0;
 
+            // ==== 均价计算 ====
+            const buyAvgPrice = totalBuyShares > 0 ? totalBuyAmount / totalBuyShares : 0;
+            const sellAvgPrice = totalSellShares > 0 ? totalSellAmount / totalSellShares : 0;
+	
             // ==== 结果展示 ====
             const resultDiv = document.getElementById('result');
             resultDiv.innerHTML = `
@@ -740,8 +748,10 @@
             <div class="fee-details">
                 <h4>持仓信息</h4>
                 <ul>
-                	<li>现持仓股数：${remainingShares.toFixed(0)} 股</li>
-                    <li>浮动盈亏：${formatFee(totalSellIncome - totalBuyCost)}</li>
+                    <li>现持仓股数：${remainingShares.toFixed(0)} 股</li>
+                    ${totalBuyShares > 0 ? `<li>买入均价：${formatCost(buyAvgPrice)}</li>` : ''}
+                    ${totalSellShares > 0 ? `<li>卖出均价：${formatCost(sellAvgPrice)}</li>` : ''}
+		    <li>浮动盈亏：${formatFee(totalSellIncome - totalBuyCost)}</li>
                     <li>买入金额：${formatFee(totalBuyCost)}</li>
                     <li>卖出金额：${formatFee(totalSellIncome)}</li>
                 </ul>
