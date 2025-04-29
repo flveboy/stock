@@ -424,6 +424,64 @@
 </div>
 
 <script>
+	// 在目标页面的 JavaScript 中添加以下代码
+	const urlParams = new URLSearchParams(window.location.search);
+	const encodedData = urlParams.get('data');
+	if (encodedData) {
+		const jsonData = decodeURIComponent(encodedData);
+	const data = JSON.parse(jsonData);
+	// 调用目标页面的导入数据功能，这里假设存在一个名为 importData 的函数
+	importPathData(data);
+	}
+
+	// 新增的导入功能
+    	function importPathData(data) {
+            try {
+
+                // 清空现有数据
+                document.getElementById('stockCode').value = data.meta.stockCode || '';
+                document.getElementById('stockName').value = data.meta.stockName || '';
+                document.getElementById('originalCost').value = data.meta.originalCost || '';
+                document.getElementById('originalShares').value = data.meta.originalShares || '';
+
+                // 清空表格
+                const clearTable = (tableId) => {
+                    const table = document.getElementById(tableId);
+                    while (table.rows.length > 1) table.deleteRow(1);
+                };
+                clearTable('buyTable');
+                clearTable('sellTable');
+
+                // 加载买入记录
+                data.buyRecords.forEach(record => {
+                    addBuyRecord();
+                    const rows = document.querySelectorAll('#buyTable tr:not(:first-child)');
+                    const lastRow = rows[rows.length - 1];
+                    lastRow.cells[0].querySelector('input').value = record.price;
+                    lastRow.cells[1].querySelector('input').value = record.shares;
+                });
+
+                // 加载卖出记录
+                data.sellRecords.forEach(record => {
+                    addSellRecord();
+                    const rows = document.querySelectorAll('#sellTable tr:not(:first-child)');
+                    const lastRow = rows[rows.length - 1];
+                    lastRow.cells[0].querySelector('input').value = record.price;
+                    lastRow.cells[1].querySelector('input').value = record.shares;
+                });
+
+                // 自动计算新成本
+                calculate();
+//           alert('数据导入成功！');
+				// 重置文件输入以允许重复选择同一文件
+                fileInput.value = '';
+            } catch (error) {
+                console.error('数据加载失败:', error);
+                alert('数据格式错误!');
+            }
+       
+    }
+
     // 独立格式化方法
     function formatFee(value) {
     	if (isNaN(value)) return '0';
