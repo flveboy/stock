@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票操作列表</title>
+    <style>
+        /* 基础样式 */
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 20px;
+        }
+
+       .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+       .search-bar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+       .btn {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+       .btn:hover {
+            opacity: 0.9;
+        }
+
+        #actionTable {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        #actionTable th,
+        #actionTable td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        #actionTable th {
+            background-color: #f5f5f5;
+        }
+
+       .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+       .modal-content {
+            background: white;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 600px;
+            position: relative;
+        }
+
+       .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+
+       .form-group {
+            margin-bottom: 15px;
+        }
+
+       .record-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+       .add-btn {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+       .delete-row-btn {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 2px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="search-bar">
+            <input type="text" id="stockCodeSearch" placeholder="股票代码">
+            <input type="text" id="stockNameSearch" placeholder="股票名称">
+            <input type="date" id="dateSearch">
+            <button class="btn" id="searchBtn">搜索</button>
+            <button class="btn" id="resetBtn">重置</button>
+        </div>
+
+        <button class="btn" id="addBtn">新增数据</button>
+        <input type="file" id="importFile" style="display: none;">
+        <button class="btn" id="importBtn">导入数据</button>
+
+        <table id="actionTable">
+            <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>股票代码</th>
+                    <th>股票名称</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="actionTableBody"></tbody>
+        </table>
+    </div>
+
+    <!-- 新增数据模态框 -->
+    <div class="modal" id="addModal">
+        <div class="modal-content">
+            <span class="close" id="closeAddModal">&times;</span>
+            <h2>新增股票操作记录</h2>
+            <form id="addForm">
+                <div class="form-group">
+                    <label>股票代码：</label>
+                    <input type="text" id="addStockCode" required>
+                </div>
+                <div class="form-group">
+                    <label>股票名称：</label>
+                    <input type="text" id="addStockName" required>
+                </div>
+                <div class="form-group">
+                    <label>持仓成本：</label>
+                    <input type="number" step="0.01" id="addOriginalCost" required>
+                </div>
+                <div class="form-group">
+                    <label>持仓股数：</label>
+                    <input type="number" id="addOriginalShares" required>
+                </div>
+
+                <h3>买入记录</h3>
+                <div id="buyRecordsContainer"></div>
+                <button class="add-btn" id="addBuyRecord">添加买入记录</button>
+
+                <h3>卖出记录</h3>
+                <div id="sellRecordsContainer"></div>
+                <button class="add-btn" id="addSellRecord">添加卖出记录</button>
+
+                <button type="submit" class="btn" style="width: 100%; margin-top: 20px;">保存</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // IndexDB初始化
+        const dbName = 'StocksDB';
+        const dbVersion = 1;
+        let db;
+
+        // 打开数据库
+        const openDB = () => {
+            const request = indexedDB.open(dbName, dbVersion);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('operations')) {
+                    db.createObjectStore('operations', { autoIncrement: true });
+                }
+            };
+            request.onsuccess = (e) => {
+                db = e.target.result;
+                loadData();
+            };
+            request.onerror = (e) => {
+                console.error('数据库打开失败:', e.target.error);
+                alert('数据库打开失败，请检查控制台获取详细信息');
+            };
+        };
+
+        // 保存数据到IndexDB
+        const saveData = (data) => {
+            // 确保数据库已打开
+            if (!db) {
+                console.error('数据库未打开，无法保存数据');
+                alert('数据库未打开，请稍后再试');
+                return;
+            }
+            // 校验数据结构是否符合预期
+            const requiredKeys = ['meta', 'buyRecords','sellRecords'];
+            const missingKeys = requiredKeys.filter(key =>!(key in data));
+            if (missingKeys.length > 0) {
+                console.error('导入数据结构不完整，缺少以下字段:', missingKeys);
+                alert('导入数据结构不完整，请检查');
+                return;
+            }
+            const requiredMetaKeys = ['stockCode','stockName', 'originalCost', 'originalShares', 'exportDate'];
+            const metaMissingKeys = requiredMetaKeys.filter(key =>!(key in data.meta));
+            if (metaMissingKeys.length > 0) {
+                console.error('导入数据的meta部分结构不完整，缺少以下字段:', metaMissingKeys);
+                alert('导入数据的meta部分结构不完整，请检查');
+                return;
+            }
+            // 将字符串类型的数值转换为数值类型
+            data.meta.originalCost = parseFloat(data.meta.originalCost);
+            data.meta.originalShares = parseInt(data.meta.originalShares);
+            data.buyRecords.forEach(record => {
+                record.price = parseFloat(record.price);
+                record.shares = parseInt(record.shares);
+            });
+            data.sellRecords.forEach(record => {
+                record.price = parseFloat(record.price);
+                record.shares = parseInt(record.shares);
+            });
+
+            const transaction = db.transaction('operations','readwrite');
+            const store = transaction.objectStore('operations');
+            const newItem = {
+               ...data,
+                exportDate: new Date().toISOString()
+            };
+            const request = store.add(newItem);
+            request.onsuccess = () => {
+                console.log('数据保存成功');
+                loadData();
+                closeModal();
+            };
+            request.onerror = (e) => {
+                console.error('数据保存到数据库失败:', e);
+                alert('数据保存到数据库失败，请检查');
+            };
+        };
+
+        // 加载数据
+        const loadData = (searchParams = {}) => {
+            // 确保数据库已打开
+            if (!db) {
+                console.error('数据库未打开，无法加载数据');
+                return;
+            }
+            const transaction = db.transaction('operations','readonly');
+            const store = transaction.objectStore('operations');
+            const data = [];
+
+            const query = store.openCursor();
+            query.onsuccess = (e) => {
+                const cursor = e.target.result;
+                if (cursor) {
+                    const item = cursor.value;
+                    // 获取记录的 id
+                    item.id = cursor.key; 
+                    // 应用搜索条件
+                    if (shouldInclude(item, searchParams)) {
+                        data.push(item);
+                    }
+                    cursor.continue();
+                } else {
+                    // 排序并渲染
+                    data.sort((a, b) => new Date(b.meta.exportDate) - new Date(a.meta.exportDate));
+                    renderTable(data);
+                }
+            };
+        };
+
+        // 搜索条件判断
+        const shouldInclude = (item, params) => {
+            const codeMatch =!params.code || item.meta.stockCode.includes(params.code);
+            const nameMatch =!params.name || item.meta.stockName.includes(params.name);
+            const dateMatch =!params.date || item.meta.exportDate.startsWith(params.date);
+            return codeMatch && nameMatch && dateMatch;
+        };
+
+        // 渲染表格
+        const renderTable = (data) => {
+            const tbody = document.getElementById('actionTableBody');
+            tbody.innerHTML = '';
+            data.forEach(item => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${formatDate(item.meta.exportDate)}</td>
+                    <td>${item.meta.stockCode}</td>
+                    <td>${item.meta.stockName}</td>
+                    <td>
+                        <button class="btn" style="background-color: #f44336; margin-right: 5px;" onclick="deleteRecord(${item.id})">删除</button>
+                        <button class="btn" style="background-color: #2196F3;" onclick="exportSingleRecord(${item.id})">导出</button>
+                    </td>
+                `;
+                row.addEventListener('dblclick', async () => {
+                    const data = await getRecordData(item.id);
+                    const jsonData = JSON.stringify(data);
+                    const encodedData = encodeURIComponent(jsonData);
+//                     window.open(`https://flveboy.github.io/stock/stock.html?data=${encodedData}`, '_blank');
+                    window.open(`./stock.html?data=${encodedData}`, '_blank');
+                });
+            });
+        };
+
+        // 获取单条记录数据
+        const getRecordData = (id) => {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction('operations','readonly');
+                const store = transaction.objectStore('operations');
+                const request = store.get(id);
+                request.onsuccess = () => {
+                    const item = request.result;
+                    const data = {
+                        meta: {
+                           ...item.meta,
+                            exportDate: item.meta.exportDate
+                        },
+                        buyRecords: item.buyRecords,
+                        sellRecords: item.sellRecords
+                    };
+                    resolve(data);
+                };
+                request.onerror = (e) => {
+                    console.error('获取记录数据失败:', e);
+                    reject(e);
+                };
+            });
+        };
+
+        // 日期格式化
+        const formatDate = (isoDate) => {
+            const date = new Date(isoDate);
+            return date.toISOString().replace('T', ' ').split('.')[0];
+        };
+
+        // 新增数据模态框
+        let buyTemplate, sellTemplate;
+        document.addEventListener('DOMContentLoaded', () => {
+            openDB();
+
+            // 初始化模板
+            buyTemplate = document.createElement('div');
+            buyTemplate.className ='record-row';
+            buyTemplate.innerHTML = `
+                <input type="number" step="0.01" placeholder="价格" required>
+                <input type="number" placeholder="股数" required>
+                <button class="delete-row-btn" onclick="deleteRow(this)">删除</button>
+            `;
+
+            sellTemplate = document.createElement('div');
+            sellTemplate.className ='record-row';
+            sellTemplate.innerHTML = `
+                <input type="number" step="0.01" placeholder="价格" required>
+                <input type="number" placeholder="股数" required>
+                <button class="delete-row-btn" onclick="deleteRow(this)">删除</button>
+            `;
+
+            // 新增买入记录
+            document.getElementById('addBuyRecord').addEventListener('click', () => {
+                const container = document.getElementById('buyRecordsContainer');
+                const newRow = buyTemplate.cloneNode(true);
+                container.appendChild(newRow);
+            });
+
+            // 新增卖出记录
+            document.getElementById('addSellRecord').addEventListener('click', () => {
+                const container = document.getElementById('sellRecordsContainer');
+                const newRow = sellTemplate.cloneNode(true);
+                container.appendChild(newRow);
+            });
+
+            // 搜索按钮
+            document.getElementById('searchBtn').addEventListener('click', () => {
+                const code = document.getElementById('stockCodeSearch').value.trim();
+                const name = document.getElementById('stockNameSearch').value.trim();
+                const date = document.getElementById('dateSearch').value;
+                loadData({ code, name, date });
+            });
+
+            // 重置按钮
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                document.getElementById('stockCodeSearch').value = '';
+                document.getElementById('stockNameSearch').value = '';
+                document.getElementById('dateSearch').value = '';
+                loadData();
+            });
+
+            // 新增按钮
+            document.getElementById('addBtn').addEventListener('click', () => {
+                resetAddForm();
+                document.getElementById('addModal').style.display = 'block';
+            });
+
+            // 关闭模态框
+            document.getElementById('closeAddModal').addEventListener('click', closeModal);
+            window.addEventListener('click', (e) => {
+                if (e.target === document.getElementById('addModal')) {
+                    closeModal();
+                }
+            });
+
+            // 导入数据
+            document.getElementById('importBtn').addEventListener('click', () => {
+                document.getElementById('importFile').click();
+            });
+
+            document.getElementById('importFile').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                // 检查文件类型是否为JSON
+                if (!file.name.endsWith('.json')) {
+                    alert('请上传JSON格式的文件');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        saveData(data);
+                    } catch (error) {
+                        console.error('导入文件解析错误:', error);
+                        alert('导入文件格式不正确，请检查JSON结构');
+                    }
+                };
+                reader.readAsText(file);
+            });
+        });
+
+        // 重置新增表单
+        const resetAddForm = () => {
+            document.getElementById('addForm').reset();
+            document.getElementById('buyRecordsContainer').innerHTML = '';
+            document.getElementById('sellRecordsContainer').innerHTML = '';
+        };
+
+        // 关闭模态框
+        const closeModal = () => {
+            document.getElementById('addModal').style.display = 'none';
+        };
+
+        // 处理新增表单提交
+        document.getElementById('addForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const stockCode = document.getElementById('addStockCode').value;
+            const stockName = document.getElementById('addStockName').value;
+            const originalCost = parseFloat(document.getElementById('addOriginalCost').value);
+            const originalShares = parseInt(document.getElementById('addOriginalShares').value);
+
+            const buyRecords = Array.from(document.getElementById('buyRecordsContainer').children).map(row => ({
+                price: parseFloat(row.children[0].value),
+                shares: parseInt(row.children[1].value)
+            }));
+
+            const sellRecords = Array.from(document.getElementById('sellRecordsContainer').children).map(row => ({
+                price: parseFloat(row.children[0].value),
+                shares: parseInt(row.children[1].value)
+            }));
+
+            saveData({
+                meta: {
+                    stockCode,
+                    stockName,
+                    originalCost,
+                    originalShares,
+                    exportDate: new Date().toISOString()
+                },
+                buyRecords,
+                sellRecords
+            });
+        });
+
+        // 删除记录
+        const deleteRecord = (id) => {
+            // 确保数据库已打开
+            if (!db) {
+                console.error('数据库未打开，无法删除记录');
+                return;
+            }
+            const transaction = db.transaction('operations','readwrite');
+            const store = transaction.objectStore('operations');
+            const request = store.delete(id);
+            request.onsuccess = () => {
+                console.log('记录删除成功');
+                loadData();
+            };
+            request.onerror = (e) => {
+                console.error('记录删除失败:', e);
+                alert('记录删除失败，请检查');
+            };
+        };
+
+        // 导出单条记录
+        const exportSingleRecord = (id) => {
+            // 确保数据库已打开
+            if (!db) {
+                console.error('数据库未打开，无法导出记录');
+                return;
+            }
+            const transaction = db.transaction('operations','readonly');
+            const store = transaction.objectStore('operations');
+            const request = store.get(id);
+            request.onsuccess = () => {
+                const item = request.result;
+                const data = {
+                    meta: {
+                       ...item.meta,
+                        exportDate: item.meta.exportDate
+                    },
+                    buyRecords: item.buyRecords,
+                    sellRecords: item.sellRecords
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `stock_${item.meta.stockCode}_${formatDate(item.meta.exportDate).replace(/:/g, '-')}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+        };
+
+        // 删除行
+        const deleteRow = (button) => {
+            const row = button.parentNode;
+            row.parentNode.removeChild(row);
+        };
+    </script>
+</body>
+
+</html>    
