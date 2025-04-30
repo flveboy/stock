@@ -62,42 +62,45 @@
                 id="closeAddModal">&times;</span>
             <div class="flex justify-between items-center mb-6 border-b pb-3">
                 <h2 class="text-2xl font-bold text-blue-600">新增记录</h2>
-                <div class="flex items-center space-x-2">
+                <div class="flex items-center space-x-8 mr-10">
                     <button type="submit" form="addForm"
                         class="btn bg-green-500 text-white rounded-md px-4 py-2 hover:bg-green-600 transform transition hover:scale-105">保存</button>
                 </div>
             </div>
-            <form id="addForm">
-                <div class="form-group mb-4">
-                    <label class="block text-sm font-medium text-gray-700">股票代码：</label>
-                    <input type="text" id="addStockCode" required
-                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+            <form id="addForm" class="flex flex-wrap -mx-3">
+                <div class="w-full md:w-1/2 px-3">
+                    <div class="form-group mb-4">
+                        <label class="block text-sm font-medium text-gray-700">股票代码：</label>
+                        <input type="text" id="addStockCode" required
+                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div class="form-group mb-4">
+                        <label class="block text-sm font-medium text-gray-700">股票名称：</label>
+                        <input type="text" id="addStockName" required
+                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div class="form-group mb-4">
+                        <label class="block text-sm font-medium text-gray-700">持仓成本：</label>
+                        <input type="number" step="0.001" id="addOriginalCost" required
+                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div class="form-group mb-4">
+                        <label class="block text-sm font-medium text-gray-700">持仓股数：</label>
+                        <input type="number" id="addOriginalShares" required
+                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
                 </div>
-                <div class="form-group mb-4">
-                    <label class="block text-sm font-medium text-gray-700">股票名称：</label>
-                    <input type="text" id="addStockName" required
-                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div class="form-group mb-4">
-                    <label class="block text-sm font-medium text-gray-700">持仓成本：</label>
-                    <input type="number" step="0.001" id="addOriginalCost" required
-                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div class="form-group mb-4">
-                    <label class="block text-sm font-medium text-gray-700">持仓股数：</label>
-                    <input type="number" id="addOriginalShares" required
-                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
-                </div>
+                <div class="w-full md:w-1/2 px-3">
+                    <h3 class="text-lg font-bold mb-2 text-blue-600">买入记录</h3>
+                    <div id="buyRecordsContainer"></div>
+                    <button class="add-btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600 transform transition hover:scale-105"
+                        id="addBuyRecord">添加买入记录</button>
 
-                <h3 class="text-lg font-bold mb-2 text-blue-600">买入记录</h3>
-                <div id="buyRecordsContainer"></div>
-                <button class="add-btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600 transform transition hover:scale-105"
-                    id="addBuyRecord">添加买入记录</button>
-
-                <h3 class="text-lg font-bold mb-2 mt-4 text-blue-600">卖出记录</h3>
-                <div id="sellRecordsContainer"></div>
-                <button class="add-btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600 transform transition hover:scale-105"
-                    id="addSellRecord">添加卖出记录</button>
+                    <h3 class="text-lg font-bold mb-2 mt-4 text-blue-600">卖出记录</h3>
+                    <div id="sellRecordsContainer"></div>
+                    <button class="add-btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600 transform transition hover:scale-105"
+                        id="addSellRecord">添加卖出记录</button>
+                </div>
             </form>
         </div>
     </div>
@@ -392,6 +395,8 @@
             const searchButton = document.getElementById('searchBtn');
             if (searchButton) {
                 searchButton.addEventListener('click', () => {
+                    // 重置页码为第一页
+                    currentPage = 1;
                     const code = document.getElementById('stockCodeSearch').value.trim();
                     const name = document.getElementById('stockNameSearch').value.trim();
                     const date = document.getElementById('dateSearch').value;
@@ -405,6 +410,8 @@
             const resetButton = document.getElementById('resetBtn');
             if (resetButton) {
                 resetButton.addEventListener('click', () => {
+                    // 重置页码为第一页
+                    currentPage = 1;
                     document.getElementById('stockCodeSearch').value = '';
                     document.getElementById('stockNameSearch').value = '';
                     document.getElementById('dateSearch').value = '';
