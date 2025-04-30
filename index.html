@@ -7,6 +7,18 @@
     <title>股票操作列表</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        /* 移除数字输入框的上下调节按钮 */
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+    </style>
 </head>
 
 <body class="bg-gray-100 font-sans p-8">
@@ -39,6 +51,8 @@
             </thead>
             <tbody id="actionTableBody"></tbody>
         </table>
+
+        <div id="pagination" class="mt-4 flex justify-center gap-2"></div>
     </div>
 
     <!-- 新增数据模态框 -->
@@ -46,41 +60,44 @@
         <div class="modal-content bg-white rounded-md p-6 mx-auto my-20 w-full max-w-md relative">
             <span class="close absolute top-3 right-3 text-gray-500 text-2xl font-bold hover:text-gray-700"
                 id="closeAddModal">&times;</span>
-            <h2 class="text-xl font-bold mb-4">新增股票操作记录</h2>
+            <div class="flex justify-between items-center mb-6 border-b pb-3">
+                <h2 class="text-2xl font-bold text-blue-600">新增记录</h2>
+                <div class="flex items-center space-x-2">
+                    <button type="submit" form="addForm"
+                        class="btn bg-green-500 text-white rounded-md px-4 py-2 hover:bg-green-600 transform transition hover:scale-105">保存</button>
+                </div>
+            </div>
             <form id="addForm">
                 <div class="form-group mb-4">
                     <label class="block text-sm font-medium text-gray-700">股票代码：</label>
                     <input type="text" id="addStockCode" required
-                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2">
+                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 <div class="form-group mb-4">
                     <label class="block text-sm font-medium text-gray-700">股票名称：</label>
                     <input type="text" id="addStockName" required
-                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2">
+                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 <div class="form-group mb-4">
                     <label class="block text-sm font-medium text-gray-700">持仓成本：</label>
-                    <input type="number" step="0.01" id="addOriginalCost" required
-                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2">
+                    <input type="number" step="0.001" id="addOriginalCost" required
+                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 <div class="form-group mb-4">
                     <label class="block text-sm font-medium text-gray-700">持仓股数：</label>
                     <input type="number" id="addOriginalShares" required
-                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2">
+                        class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
 
-                <h3 class="text-lg font-bold mb-2">买入记录</h3>
+                <h3 class="text-lg font-bold mb-2 text-blue-600">买入记录</h3>
                 <div id="buyRecordsContainer"></div>
-                <button class="add-btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600"
+                <button class="add-btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600 transform transition hover:scale-105"
                     id="addBuyRecord">添加买入记录</button>
 
-                <h3 class="text-lg font-bold mb-2 mt-4">卖出记录</h3>
+                <h3 class="text-lg font-bold mb-2 mt-4 text-blue-600">卖出记录</h3>
                 <div id="sellRecordsContainer"></div>
-                <button class="add-btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600"
+                <button class="add-btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600 transform transition hover:scale-105"
                     id="addSellRecord">添加卖出记录</button>
-
-                <button type="submit"
-                    class="btn bg-green-500 text-white rounded-md px-4 py-2 w-full mt-6 hover:bg-green-600">保存</button>
             </form>
         </div>
     </div>
@@ -90,6 +107,8 @@
         const dbName = 'StocksDB';
         const dbVersion = 1;
         let db;
+        let currentPage = 1;
+        const itemsPerPage = 8;
 
         // 打开数据库
         const openDB = () => {
@@ -179,7 +198,7 @@
                 const cursor = e.target.result;
                 if (cursor) {
                     const item = cursor.value;
-                    // 获取记录的 id
+                    // 获取记录的id
                     item.id = cursor.key;
                     // 应用搜索条件
                     if (shouldInclude(item, searchParams)) {
@@ -190,6 +209,7 @@
                     // 排序并渲染
                     data.sort((a, b) => new Date(b.meta.exportDate) - new Date(a.meta.exportDate));
                     renderTable(data);
+                    renderPagination(data);
                 }
             };
         };
@@ -206,7 +226,11 @@
         const renderTable = (data) => {
             const tbody = document.getElementById('actionTableBody');
             tbody.innerHTML = '';
-            data.forEach(item => {
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const currentPageData = data.slice(startIndex, endIndex);
+
+            currentPageData.forEach(item => {
                 const row = tbody.insertRow();
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap">${formatDate(item.meta.exportDate)}</td>
@@ -218,13 +242,63 @@
                     </td>
                 `;
                 row.addEventListener('dblclick', async () => {
-                    const data = await getRecordData(item.id);
-                    const jsonData = JSON.stringify(data);
-                    const encodedData = encodeURIComponent(jsonData);
-//                     window.open(`https://flveboy.github.io/stock/stock.html?data=${encodedData}`, '_blank');
-                    window.open(`./stock.html?data=${encodedData}`, '_blank');
+                    try {
+                        const data = await getRecordData(item.id);
+                        const jsonData = JSON.stringify(data);
+                        const encodedData = encodeURIComponent(jsonData);
+                        // window.open(`https://flveboy.github.io/stock/stock.html?data=${encodedData}`, '_blank');
+                        window.open(`./stock.html?data=${encodedData}`, '_blank');
+                    } catch (error) {
+                        console.error('获取记录数据并打开新窗口时出错:', error);
+                        alert('获取记录数据并打开新窗口时出错，请检查控制台获取详细信息');
+                    }
                 });
             });
+        };
+
+        // 渲染分页导航
+        const renderPagination = (data) => {
+            const pagination = document.getElementById('pagination');
+            pagination.innerHTML = '';
+            const totalPages = Math.ceil(data.length / itemsPerPage);
+
+            const prevButton = document.createElement('button');
+            prevButton.textContent = '上一页';
+            prevButton.classList.add('btn', 'bg-gray-300', 'text-gray-700', 'rounded-md', 'px-4', 'py-2', 'hover:bg-gray-400');
+            prevButton.disabled = currentPage === 1;
+            prevButton.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    loadData();
+                }
+            });
+            pagination.appendChild(prevButton);
+
+            for (let i = 1; i <= totalPages; i++) {
+                const pageButton = document.createElement('button');
+                pageButton.textContent = i;
+                pageButton.classList.add('btn', 'bg-gray-300', 'text-gray-700', 'rounded-md', 'px-4', 'py-2', 'hover:bg-gray-400');
+                if (i === currentPage) {
+                    pageButton.classList.add('bg-blue-500', 'text-white');
+                }
+                pageButton.addEventListener('click', () => {
+                    currentPage = i;
+                    loadData();
+                });
+                pagination.appendChild(pageButton);
+            }
+
+            const nextButton = document.createElement('button');
+            nextButton.textContent = '下一页';
+            nextButton.classList.add('btn', 'bg-gray-300', 'text-gray-700', 'rounded-md', 'px-4', 'py-2', 'hover:bg-gray-400');
+            nextButton.disabled = currentPage === totalPages;
+            nextButton.addEventListener('click', () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    loadData();
+                }
+            });
+            pagination.appendChild(nextButton);
         };
 
         // 获取单条记录数据
@@ -255,7 +329,13 @@
         // 日期格式化
         const formatDate = (isoDate) => {
             const date = new Date(isoDate);
-            return date.toISOString().replace('T', ' ').split('.')[0];
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
         };
 
         // 新增数据模态框
@@ -265,63 +345,93 @@
 
             // 初始化模板
             buyTemplate = document.createElement('div');
-            buyTemplate.className = 'record-row flex gap-4 mb-4';
+            buyTemplate.className ='record-row flex gap-4 mb-4';
             buyTemplate.innerHTML = `
-                <input type="number" step="0.01" placeholder="价格" required
-                    class="border border-gray-300 rounded-md px-3 py-2 w-full">
+                <input type="number" step="0.001" placeholder="价格" required
+                    class="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-blue-500 focus:border-blue-500">
                 <input type="number" placeholder="股数" required
-                    class="border border-gray-300 rounded-md px-3 py-2 w-full">
-                <button class="delete-row-btn bg-red-500 text-white rounded-md px-2 py-1 hover:bg-red-600" onclick="deleteRow(this)">删除</button>
+                    class="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-blue-500 focus:border-blue-500">
+                <button class="delete-row-btn bg-red-500 text-white rounded-md px-2 py-1 hover:bg-red-600 transform transition hover:scale-105" onclick="deleteRow(this)">删除</button>
             `;
 
             sellTemplate = document.createElement('div');
-            sellTemplate.className = 'record-row flex gap-4 mb-4';
+            sellTemplate.className ='record-row flex gap-4 mb-4';
             sellTemplate.innerHTML = `
-                <input type="number" step="0.01" placeholder="价格" required
-                    class="border border-gray-300 rounded-md px-3 py-2 w-full">
+                <input type="number" step="0.001" placeholder="价格" required
+                    class="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-blue-500 focus:border-blue-500">
                 <input type="number" placeholder="股数" required
-                    class="border border-gray-300 rounded-md px-3 py-2 w-full">
-                <button class="delete-row-btn bg-red-500 text-white rounded-md px-2 py-1 hover:bg-red-600" onclick="deleteRow(this)">删除</button>
+                    class="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-blue-500 focus:border-blue-500">
+                <button class="delete-row-btn bg-red-500 text-white rounded-md px-2 py-1 hover:bg-red-600 transform transition hover:scale-105" onclick="deleteRow(this)">删除</button>
             `;
 
             // 新增买入记录
-            document.getElementById('addBuyRecord').addEventListener('click', () => {
-                const container = document.getElementById('buyRecordsContainer');
-                const newRow = buyTemplate.cloneNode(true);
-                container.appendChild(newRow);
-            });
+            const addBuyRecordButton = document.getElementById('addBuyRecord');
+            if (addBuyRecordButton) {
+                addBuyRecordButton.addEventListener('click', () => {
+                    const container = document.getElementById('buyRecordsContainer');
+                    const newRow = buyTemplate.cloneNode(true);
+                    container.appendChild(newRow);
+                });
+            } else {
+                console.error('未找到添加买入记录按钮');
+            }
 
             // 新增卖出记录
-            document.getElementById('addSellRecord').addEventListener('click', () => {
-                const container = document.getElementById('sellRecordsContainer');
-                const newRow = sellTemplate.cloneNode(true);
-                container.appendChild(newRow);
-            });
+            const addSellRecordButton = document.getElementById('addSellRecord');
+            if (addSellRecordButton) {
+                addSellRecordButton.addEventListener('click', () => {
+                    const container = document.getElementById('sellRecordsContainer');
+                    const newRow = sellTemplate.cloneNode(true);
+                    container.appendChild(newRow);
+                });
+            } else {
+                console.error('未找到添加卖出记录按钮');
+            }
 
             // 搜索按钮
-            document.getElementById('searchBtn').addEventListener('click', () => {
-                const code = document.getElementById('stockCodeSearch').value.trim();
-                const name = document.getElementById('stockNameSearch').value.trim();
-                const date = document.getElementById('dateSearch').value;
-                loadData({ code, name, date });
-            });
+            const searchButton = document.getElementById('searchBtn');
+            if (searchButton) {
+                searchButton.addEventListener('click', () => {
+                    const code = document.getElementById('stockCodeSearch').value.trim();
+                    const name = document.getElementById('stockNameSearch').value.trim();
+                    const date = document.getElementById('dateSearch').value;
+                    loadData({ code, name, date });
+                });
+            } else {
+                console.error('未找到搜索按钮');
+            }
 
             // 重置按钮
-            document.getElementById('resetBtn').addEventListener('click', () => {
-                document.getElementById('stockCodeSearch').value = '';
-                document.getElementById('stockNameSearch').value = '';
-                document.getElementById('dateSearch').value = '';
-                loadData();
-            });
+            const resetButton = document.getElementById('resetBtn');
+            if (resetButton) {
+                resetButton.addEventListener('click', () => {
+                    document.getElementById('stockCodeSearch').value = '';
+                    document.getElementById('stockNameSearch').value = '';
+                    document.getElementById('dateSearch').value = '';
+                    loadData();
+                });
+            } else {
+                console.error('未找到重置按钮');
+            }
 
             // 新增按钮
-            document.getElementById('addBtn').addEventListener('click', () => {
-                resetAddForm();
-                document.getElementById('addModal').style.display = 'block';
-            });
+            const addButton = document.getElementById('addBtn');
+            if (addButton) {
+                addButton.addEventListener('click', () => {
+                    resetAddForm();
+                    document.getElementById('addModal').style.display = 'block';
+                });
+            } else {
+                console.error('未找到新增按钮');
+            }
 
             // 关闭模态框
-            document.getElementById('closeAddModal').addEventListener('click', closeModal);
+            const closeAddModalButton = document.getElementById('closeAddModal');
+            if (closeAddModalButton) {
+                closeAddModalButton.addEventListener('click', closeModal);
+            } else {
+                console.error('未找到关闭模态框按钮');
+            }
             window.addEventListener('click', (e) => {
                 if (e.target === document.getElementById('addModal')) {
                     closeModal();
@@ -329,29 +439,39 @@
             });
 
             // 导入数据
-            document.getElementById('importBtn').addEventListener('click', () => {
-                document.getElementById('importFile').click();
-            });
+            const importButton = document.getElementById('importBtn');
+            if (importButton) {
+                importButton.addEventListener('click', () => {
+                    document.getElementById('importFile').click();
+                });
+            } else {
+                console.error('未找到导入数据按钮');
+            }
 
-            document.getElementById('importFile').addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                // 检查文件类型是否为JSON
-                if (!file.name.endsWith('.json')) {
-                    alert('请上传JSON格式的文件');
-                    return;
-                }
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const data = JSON.parse(event.target.result);
-                        saveData(data);
-                    } catch (error) {
-                        console.error('导入文件解析错误:', error);
-                        alert('导入文件格式不正确，请检查JSON结构');
+            const importFileInput = document.getElementById('importFile');
+            if (importFileInput) {
+                importFileInput.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    // 检查文件类型是否为JSON
+                    if (!file.name.endsWith('.json')) {
+                        alert('请上传JSON格式的文件');
+                        return;
                     }
-                };
-                reader.readAsText(file);
-            });
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            const data = JSON.parse(event.target.result);
+                            saveData(data);
+                        } catch (error) {
+                            console.error('导入文件解析错误:', error);
+                            alert('导入文件格式不正确，请检查JSON结构');
+                        }
+                    };
+                    reader.readAsText(file);
+                });
+            } else {
+                console.error('未找到导入文件输入框');
+            }
         });
 
         // 重置新增表单
@@ -367,35 +487,40 @@
         };
 
         // 处理新增表单提交
-        document.getElementById('addForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const stockCode = document.getElementById('addStockCode').value;
-            const stockName = document.getElementById('addStockName').value;
-            const originalCost = parseFloat(document.getElementById('addOriginalCost').value);
-            const originalShares = parseInt(document.getElementById('addOriginalShares').value);
+        const addForm = document.getElementById('addForm');
+        if (addForm) {
+            addForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const stockCode = document.getElementById('addStockCode').value;
+                const stockName = document.getElementById('addStockName').value;
+                const originalCost = parseFloat(document.getElementById('addOriginalCost').value);
+                const originalShares = parseInt(document.getElementById('addOriginalShares').value);
 
-            const buyRecords = Array.from(document.getElementById('buyRecordsContainer').children).map(row => ({
-                price: parseFloat(row.children[0].value),
-                shares: parseInt(row.children[1].value)
-            }));
+                const buyRecords = Array.from(document.getElementById('buyRecordsContainer').children).map(row => ({
+                    price: parseFloat(row.children[0].value),
+                    shares: parseInt(row.children[1].value)
+                }));
 
-            const sellRecords = Array.from(document.getElementById('sellRecordsContainer').children).map(row => ({
-                price: parseFloat(row.children[0].value),
-                shares: parseInt(row.children[1].value)
-            }));
+                const sellRecords = Array.from(document.getElementById('sellRecordsContainer').children).map(row => ({
+                    price: parseFloat(row.children[0].value),
+                    shares: parseInt(row.children[1].value)
+                }));
 
-            saveData({
-                meta: {
-                    stockCode,
-                    stockName,
-                    originalCost,
-                    originalShares,
-                    exportDate: new Date().toISOString()
-                },
-                buyRecords,
-                sellRecords
+                saveData({
+                    meta: {
+                        stockCode,
+                        stockName,
+                        originalCost,
+                        originalShares,
+                        exportDate: new Date().toISOString()
+                    },
+                    buyRecords,
+                    sellRecords
+                });
             });
-        });
+        } else {
+            console.error('未找到新增表单');
+        }
 
         // 删除记录
         const deleteRecord = (id) => {
@@ -445,6 +570,10 @@
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
+            };
+            request.onerror = (e) => {
+                console.error('导出记录失败:', e);
+                alert('导出记录失败，请检查');
             };
         };
 
