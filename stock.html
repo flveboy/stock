@@ -505,7 +505,7 @@
 
     function formatCost(value) {
         if (isNaN(value) || value === 0) return '0';
-        const formatted = value.toFixed(3);
+        const formatted = value.toFixed(4);
         return formatted.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.$/, '');
     }
 
