@@ -680,7 +680,7 @@
             ...data,
             meta: {
                 ...data.meta,
-                exportDate: new Date().toISOString()
+                exportDate: data.meta.exportDate?data.meta.exportDate:new Date().toISOString()
             }
         };
 
