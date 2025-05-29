@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票操作列表</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        /* 移除数字输入框的上下调节按钮 */
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 font-sans p-8">
+<div class="container mx-auto bg-white shadow-md rounded-md p-6">
+    <div class="search-bar flex flex-wrap gap-4 mb-4">
+        <input type="text" id="stockCodeSearch" placeholder="股票代码"
+               class="border border-gray-300 rounded-md px-3 py-2 w-full sm:w-auto">
+        <input type="text" id="stockNameSearch" placeholder="股票名称"
+               class="border border-gray-300 rounded-md px-3 py-2 w-full sm:w-auto">
+        <input type="date" id="dateSearch"
+               class="border border-gray-300 rounded-md px-3 py-2 w-full sm:w-auto">
+        <button class="btn bg-green-500 text-white rounded-md px-4 py-2 hover:bg-green-600" id="searchBtn">搜索</button>
+        <button class="btn bg-gray-300 text-gray-700 rounded-md px-4 py-2 hover:bg-gray-400" id="resetBtn">重置</button>
+    </div>
+
+    <!-- Gitee配置模态框 -->
+    <div id="giteeConfigModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white p-4 rounded shadow-lg w-96">
+            <h3 class="text-lg font-semibold mb-3">Gitee同步配置</h3>
+            <div class="mt-2"><input type="text" id="giteeToken" placeholder="Gitee accessToken"
+                                     class="border p-1 rounded w-full"></div>
+            <div class="mt-2"><input type="text" id="giteeRepo" placeholder="仓库名称（格式：所有者/仓库名）"
+                                     class="border p-1 rounded w-full"></div>
+            <div class="mt-2"><input type="text" id="giteePath" placeholder="文件存储路径（如：stock-data.json）"
+                                     class="border p-1 rounded w-full"></div>
+            <div class="mt-3 flex gap-2">
+                <button id="testGiteeConn" class="bg-green-500 text-white rounded-md px-3 py-1 hover:bg-green-600">
+                    测试连接
+                </button>
+                <button id="saveGiteeConfig" class="bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600"
+                        disabled>保存配置
+                </button>
+                <button id="closeGiteeModal" class="bg-gray-500 text-white rounded-md px-3 py-1 hover:bg-gray-600">
+                    关闭
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex gap-4 mb-4">
+        <button class="btn bg-blue-500 text-white rounded-md px-4 py-2 hover:bg-blue-600" id="addBtn">新增数据</button>
+        <input type="file" id="importFile" class="hidden">
+        <button class="btn bg-yellow-500 text-white rounded-md px-4 py-2 hover:bg-yellow-600" id="importBtn">导入数据
+        </button>
+        <button id="configGiteeBtn" class="bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600">配置Gitee
+        </button>
+        <button class="btn bg-green-500 text-white rounded-md px-3 py-1 hover:bg-green-600" onclick="manualSync()">
+            手动同步
+        </button>
+        <button class="btn bg-green-500 text-white rounded-md px-3 py-1 hover:bg-green-600" onclick="manualBackup()">
+            手动备份
+        </button>
+    </div>
+
+    <table id="actionTable" class="w-full border-collapse">
+        <thead>
+        <tr class="bg-gray-200">
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">时间</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">股票代码</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">股票名称</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+        </tr>
+        </thead>
+        <tbody id="actionTableBody"></tbody>
+    </table>
+
+    <div id="pagination" class="mt-4 flex justify-center gap-2"></div>
+</div>
+
+<!-- 新增数据模态框 -->
+<div class="modal fixed top-0 left-0 w-full h-full bg-gray-900 bg-opacity-50 hidden" id="addModal">
+    <div class="modal-content bg-white rounded-md p-6 mx-auto my-20 w-full max-w-md relative">
+            <span class="close absolute top-3 right-3 text-gray-500 text-2xl font-bold hover:text-gray-700"
+                  id="closeAddModal">&times;</span>
+        <div class="flex justify-between items-center mb-6 border-b pb-3">
+            <h2 class="text-2xl font-bold text-blue-600">新增记录</h2>
+            <div class="flex items-center space-x-8 mr-10">
+                <button type="submit" form="addForm"
+                        class="btn bg-green-500 text-white rounded-md px-4 py-2 hover:bg-green-600 transform transition hover:scale-105">
+                    保存
+                </button>
+            </div>
+        </div>
+        <form id="addForm" class="flex flex-wrap -mx-3">
+            <div class="w-full md:w-1/2 px-3">
+                <div class="form-group mb-4">
+                    <label class="block text-sm font-medium text-gray-700">股票代码：</label>
+                    <input type="text" id="addStockCode" required
+                           class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="form-group mb-4">
+                    <label class="block text-sm font-medium text-gray-700">股票名称：</label>
+                    <input type="text" id="addStockName" required
+                           class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="form-group mb-4">
+                    <label class="block text-sm font-medium text-gray-700">持仓成本：</label>
+                    <input type="number" step="0.0001" id="addOriginalCost" required
+                           class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="form-group mb-4">
+                    <label class="block text-sm font-medium text-gray-700">持仓股数：</label>
+                    <input type="number" id="addOriginalShares" required
+                           class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+            </div>
+            <div class="w-full md:w-1/2 px-3">
+                <h3 class="text-lg font-bold mb-2 text-blue-600">买入记录</h3>
+                <div id="buyRecordsContainer"></div>
+                <button class="add-btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600 transform transition hover:scale-105"
+                        id="addBuyRecord">添加买入记录
+                </button>
+
+                <h3 class="text-lg font-bold mb-2 mt-4 text-blue-600">卖出记录</h3>
+                <div id="sellRecordsContainer"></div>
+                <button class="add-btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600 transform transition hover:scale-105"
+                        id="addSellRecord">添加卖出记录
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // 显示同步状态
+    const showSyncStatus = (message, isError = false) => {
+        const statusEl = document.createElement('div');
+        statusEl.className = `sync-status fixed top-4 right-4 p-3 rounded bg-${isError ? 'red' : 'green'}-500 text-white shadow-lg transition-opacity`;
+        statusEl.textContent = message;
+        document.body.appendChild(statusEl);
+        setTimeout(() => statusEl.remove(), 3000);
+    };
+
+    // 页面加载时从localStorage读取Gitee配置并填充表单
+    const loadGiteeConfig = () => {
+        const token = localStorage.getItem('giteeToken');
+        const repo = localStorage.getItem('giteeRepo');
+        const path = localStorage.getItem('giteePath');
+
+        if (token) document.getElementById('giteeToken').value = token;
+        if (repo) document.getElementById('giteeRepo').value = repo;
+        if (path) document.getElementById('giteePath').value = path;
+
+        // 如果有配置，启用测试连接按钮
+        if (token) {
+            document.getElementById('testGiteeConn').disabled = false;
+        }
+    };
+
+    // 显示/隐藏模态框函数
+    const toggleGiteeModal = (isShow) => {
+        document.getElementById('giteeConfigModal').classList.toggle('hidden', !isShow);
+        // 显示模态框时加载配置
+        if (isShow) {
+            loadGiteeConfig();
+        }
+    };
+
+    // 配置Gitee按钮点击事件
+    document.getElementById('configGiteeBtn').addEventListener('click', () => {
+        toggleGiteeModal(true);
+    });
+
+    // 关闭模态框按钮
+    document.getElementById('closeGiteeModal').addEventListener('click', () => {
+        toggleGiteeModal(false);
+    });
+
+    // 测试Gitee连接（模态框内）
+    document.getElementById('testGiteeConn').addEventListener('click', async () => {
+        const token = document.getElementById('giteeToken').value;
+        if (!token) {
+            showSyncStatus('请输入Gitee accessToken', true);
+            return;
+        }
+        try {
+            // 先验证token有效性，再验证仓库存在性
+            const userRes = await fetch('https://gitee.com/api/v5/user', {
+                headers: {Authorization: `token ${token}`}
+            });
+            if (userRes.ok) {
+                // 验证仓库存在性
+                const [owner, repoName] = document.getElementById('giteeRepo').value.split('/');
+                if (!owner || !repoName) {
+                    showSyncStatus('仓库名称格式错误（需所有者/仓库名）', true);
+                    return;
+                }
+                const repoRes = await fetch(`https://gitee.com/api/v5/repos/${owner}/${repoName}`, {
+                    headers: {Authorization: `token ${token}`}
+                });
+                if (repoRes.ok) {
+                    showSyncStatus('Gitee连接及仓库验证成功');
+                } else {
+                    showSyncStatus('仓库不存在或无权限访问，请检查仓库地址', true);
+                    document.getElementById('saveGiteeConfig').disabled = true;
+                    return;
+                }
+                // 测试通过后启用保存按钮
+                document.getElementById('saveGiteeConfig').disabled = false;
+            } else {
+                showSyncStatus('Gitee连接测试失败，请检查token或网络', true);
+                document.getElementById('saveGiteeConfig').disabled = true;
+            }
+        } catch (err) {
+            showSyncStatus('网络请求失败：' + err.message, true);
+            document.getElementById('saveGiteeConfig').disabled = true;
+        }
+    });
+
+    // 保存Gitee配置
+    document.getElementById('saveGiteeConfig').addEventListener('click', () => {
+        const token = document.getElementById('giteeToken').value;
+        const repo = document.getElementById('giteeRepo').value;
+        const path = document.getElementById('giteePath').value;
+        if (!token || !repo || !path) {
+            showSyncStatus('请填写完整配置信息', true);
+            return;
+        }
+        // 保存到localStorage
+        localStorage.setItem('giteeToken', token);
+        localStorage.setItem('giteeRepo', repo);
+        localStorage.setItem('giteePath', path);
+        showSyncStatus('配置保存成功');
+        toggleGiteeModal(false);
+    });
+
+    // 手动同步（从Gitee拉取数据到本地）
+    const manualSync = async () => {
+        showSyncStatus('开始手动同步（从Gitee拉取数据）...');
+        await pullFromGitee();
+    };
+
+    // 比较两个数据数组，找出不同的数据
+    //const compareData = (localData, remoteData) => {
+    //   const localIds = localData.map(item => item.id);
+    //    const newRemoteData = remoteData.filter(item =>!localIds.includes(item.id));
+    //   return newRemoteData;
+    //};
+
+
+    // 比较两个数据数组，找出不同的数据，根据stockCode_exportDate判断是不是同一条数据
+    const compareData = (localData, remoteData) => {
+        // 创建本地数据的唯一标识映射
+        const localDataMap = new Map();
+        localData.forEach(item => {
+            // 使用股票代码和导出日期的组合作为唯一标识
+            const key = `${item.meta.stockCode}_${item.meta.exportDate}`;
+            localDataMap.set(key, item);
+        });
+
+        // 过滤出远程数据中本地不存在的记录
+        const newRemoteData = remoteData.filter(item => {
+            const key = `${item.meta.stockCode}_${item.meta.exportDate}`;
+            return !localDataMap.has(key);
+        });
+
+        return newRemoteData;
+    };
+
+    // 安全地解码Base64字符串
+    const safeBase64Decode = (base64String) => {
+        try {
+            // 替换可能的URL安全变体
+            let cleaned = base64String.replace(/-/g, '+').replace(/_/g, '/');
+            // 确保字符串长度是4的倍数
+            while (cleaned.length % 4) {
+                cleaned += '=';
+            }
+            return decodeURIComponent(atob(cleaned));
+        } catch (error) {
+            console.error('Base64解码失败:', error);
+            console.log('原始Base64字符串:', base64String);
+            // 尝试直接解析，不进行解码
+            try {
+                return base64String;
+            } catch (e) {
+                throw new Error('无法解析数据: ' + e.message);
+            }
+        }
+    };
+
+    // 安全地编码Base64字符串
+    const safeBase64Encode = (text) => {
+        try {
+            // 先进行URI编码，处理特殊字符
+            const encodedText = encodeURIComponent(text);
+            // 然后进行Base64编码
+            const base64 = btoa(encodedText);
+            // 替换URL安全变体
+            return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        } catch (error) {
+            console.error('Base64编码失败:', error);
+            throw new Error('数据编码失败: ' + error.message);
+        }
+    };
+
+    // 从Gitee拉取数据到IndexedDB
+    const pullFromGitee = async () => {
+        const token = localStorage.getItem('giteeToken');
+        const repo = localStorage.getItem('giteeRepo');
+        const path = localStorage.getItem('giteePath');
+        if (!token || !repo || !path) {
+            showSyncStatus('请先配置Gitee同步信息', true);
+            return;
+        }
+        try {
+            const [owner, repoName] = repo.split('/');
+            if (!owner || !repoName) {
+                showSyncStatus('仓库名称格式错误（需所有者/仓库名）', true);
+                return;
+            }
+            const apiUrl = `https://gitee.com/api/v5/repos/${owner}/${repoName}/contents/${encodeURIComponent(path)}`;
+            const res = await fetch(apiUrl, {
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            // 处理文件不存在的情况
+            if (res.status === 404) {
+                showSyncStatus('远程文件不存在，将创建新文件', true);
+                return;
+            }
+
+            if (!res.ok) {
+                const error = await res.json();
+                showSyncStatus(`拉取失败：${error.message || '未知错误'}`, true);
+                return;
+            }
+            const fileData = await res.json();
+            // 检查返回的数据是否有效
+            if (Array.isArray(fileData) && fileData.length === 0) {
+                // Gitee返回空数组，表示文件不存在
+                showSyncStatus('远程文件不存在，跳过拉取', true);
+                return;
+            }
+            if (!fileData.content) {
+                // 数据格式不符合预期
+                showSyncStatus('远程数据格式异常，跳过拉取', true);
+                console.error('Gitee API返回的数据格式异常:', fileData);
+                return;
+            }
+
+            // 安全地解码Base64数据
+            let content;
+            try {
+                //content = safeBase64Decode(fileData.content);
+                content = decodeURIComponent(atob(fileData.content));
+            } catch (decodeError) {
+                showSyncStatus(`数据解码失败：${decodeError.message}`, true);
+                console.error('解码错误详情:', decodeError);
+                return;
+            }
+            // 解析JSON数据
+            let remoteData;
+            try {
+                remoteData = JSON.parse(content);
+            } catch (parseError) {
+                showSyncStatus(`数据解析失败：${parseError.message}`, true);
+                console.error('解析错误详情:', parseError);
+                console.error('原始内容:', content);
+                return;
+            }
+            // 验证数据结构
+            if (!Array.isArray(remoteData)) {
+                showSyncStatus('Gitee数据结构错误，期望数组', true);
+                console.error('数据结构错误:', remoteData);
+                return;
+            }
+
+            // 获取本地 IndexedDB 中的数据
+            const localData = await new Promise((resolve, reject) => {
+                const transaction = db.transaction('operations', 'readonly');
+                const store = transaction.objectStore('operations');
+                const request = store.getAll();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+
+            // 找出不同的数据
+            const newRemoteData = compareData(localData, remoteData);
+
+            // 插入新数据
+            if (newRemoteData.length > 0) {
+                const transaction = db.transaction('operations', 'readwrite');
+                const store = transaction.objectStore('operations');
+                newRemoteData.forEach(item => {
+                    // 确保每条记录有唯一ID
+                    if (!item.id) {
+                        item.id = Date.now() + Math.floor(Math.random() * 1000);
+                    }
+                    store.add(item);
+                });
+
+                // 使用transaction.oncomplete确保所有数据都已写入
+                transaction.oncomplete = () => {
+                    showSyncStatus(`从Gitee拉取${newRemoteData.length}条新数据并导入成功`);
+                    // 重新加载数据
+                    loadData();
+                };
+                transaction.onerror = (e) => {
+                    showSyncStatus(`导入数据失败：${e.target.error}`, true);
+                };
+            } else {
+                showSyncStatus('没有新数据需要同步');
+            }
+        } catch (err) {
+            showSyncStatus(`拉取异常：${err.message}`, true);
+            console.error('拉取数据异常详情:', err);
+        }
+    };
+
+    // 手动备份
+    const manualBackup = async () => {
+        showSyncStatus('开始手动备份...');
+        await syncToGitee(false); // 手动备份标记为全量
+    };
+
+
+    // Gitee备份核心函数
+    const syncToGitee = async (isIncremental) => {
+        // 从localStorage读取配置
+        const token = localStorage.getItem('giteeToken');
+        const repo = localStorage.getItem('giteeRepo');
+        const path = localStorage.getItem('giteePath');
+        if (!token || !repo || !path) {
+            showSyncStatus('请先配置Gitee信息', true);
+            return;
+        }
+        try {
+            // 解析仓库所有者和名称
+            const [owner, repoName] = repo.split('/');
+            if (!owner || !repoName) {
+                showSyncStatus('仓库名称格式错误（需所有者/仓库名）', true);
+                return;
+            }
+            // 构造仓库API路径
+            const repoApiPath = `${owner}/${repoName}`;
+            // 获取需要备份的数据
+            const localData = await new Promise((resolve, reject) => {
+                if (!db) {
+                    reject(new Error('数据库未打开'));
+                    return;
+                }
+                const transaction = db.transaction('operations', 'readonly');
+                const store = transaction.objectStore('operations');
+                // 检查exportDate索引是否存在
+                if (!store.indexNames.contains('exportDate')) {
+                    reject(new Error('exportDate索引不存在'));
+                    return;
+                }
+                const request = isIncremental && lastSyncTime
+                    ? store.index('exportDate').getAll(IDBKeyRange.lowerBound(lastSyncTime))
+                    : store.getAll();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+
+            // 获取 Gitee 上的现有数据
+            const apiUrl = `https://gitee.com/api/v5/repos/${owner}/${repoName}/contents/${encodeURIComponent(path)}`;
+            const getRes = await fetch(apiUrl, {
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            let remoteData = [];
+            let fileExists = false;
+            let sha = null;
+
+            // 处理文件不存在的情况
+            if (!getRes.ok) {
+                const error = await getRes.json();
+                // 特别处理404错误，这表明文件不存在
+                if (getRes.status === 404) {
+                    showSyncStatus('远程文件不存在，将创建新文件');
+                } else {
+                    showSyncStatus(`获取远程数据失败：${error.message || '未知错误'}`, true);
+                    return;
+                }
+            } else {
+                const fileData = await getRes.json();
+
+                // 检查返回的数据是否有效
+                if (Array.isArray(fileData) && fileData.length === 0) {
+                    // Gitee返回空数组，表示文件不存在
+                    showSyncStatus('远程文件不存在，将创建新文件');
+                } else if (!fileData.content || !fileData.sha) {
+                    // 数据格式不符合预期
+                    showSyncStatus('远程数据格式异常，将创建新文件', true);
+                    console.error('Gitee API返回的数据格式异常:', fileData);
+                } else {
+                    // 正常处理数据
+                    fileExists = true;
+                    sha = fileData.sha;
+                    const content = decodeURIComponent(atob(fileData.content));
+                    remoteData = JSON.parse(content);
+                }
+            }
+
+            // 找出不同的数据
+            const newLocalData = compareData(remoteData, localData);
+
+            if (newLocalData.length > 0) {
+                // 合并本地和远程数据
+                const allData = [...remoteData, ...newLocalData];
+
+                // 准备请求体
+                const requestBody = {
+                    content: btoa(encodeURIComponent(JSON.stringify(allData))),
+                    message: `同步数据至Gitee：${isIncremental ? '增量' : '全量'} ${new Date().toISOString()}`,
+                    branch: 'master'
+                };
+
+                // 只在文件存在且有SHA值时添加sha字段
+                if (fileExists && sha) {
+                    requestBody.sha = sha;
+                }
+
+                // 调试：输出请求体
+                console.log('请求体:', requestBody);
+
+                // 根据文件是否存在选择正确的HTTP方法
+                const method = fileExists ? 'PUT' : 'POST';
+
+                // 调用Gitee API提交数据
+                const res = await fetch(apiUrl, {
+                    method,
+                    headers: {
+                        'Authorization': `token ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (res.ok) {
+                    showSyncStatus(`${isIncremental ? '增量' : '全量'}推送成功，上传${newLocalData.length}条新数据`);
+                    // 更新最后同步时间
+                    localStorage.setItem('lastSyncTime', new Date().toISOString());
+                } else {
+                    const error = await res.json();
+                    showSyncStatus(`同步至Gitee失败：${error.message || '未知错误'}`, true);
+                    console.error('Gitee API错误:', error);
+                    console.error('请求URL:', apiUrl);
+                    console.error('请求体:', requestBody);
+                    console.error('HTTP方法:', method);
+                }
+            } else {
+                showSyncStatus('没有新数据需要备份');
+            }
+        } catch (err) {
+            showSyncStatus(`备份异常：${err.message}`, true);
+            console.error('备份过程异常:', err);
+        }
+    };
+
+
+    // IndexDB初始化
+    const dbName = 'StocksDB';
+    // Gitee同步相关变量
+    let autoSyncInterval = null;
+    let pushIntervalId = null;
+    let pullIntervalId = null;
+
+    let lastSyncTime = localStorage.getItem('lastSyncTime') || null;
+    const dbVersion = 1;
+    let db;
+    let currentPage = 1;
+    const itemsPerPage = 7;
+
+    // 打开数据库
+    const openDB = () => {
+        const request = indexedDB.open(dbName, dbVersion);
+        request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('operations')) {
+                const store = db.createObjectStore('operations', {autoIncrement: true});
+                // 创建索引以便按日期查询
+                store.createIndex('exportDate', 'meta.exportDate', {unique: false});
+            }
+        };
+        request.onsuccess = (e) => {
+            db = e.target.result;
+            loadData();
+
+            // 数据库初始化完成后立即尝试拉取数据
+            pullFromGitee();
+
+            // 设置自动同步定时器
+            setupSyncTimers();
+        };
+        request.onerror = (e) => {
+            console.error('数据库打开失败:', e.target.error);
+            alert('数据库打开失败，请检查控制台获取详细信息');
+        };
+    };
+
+    // 设置同步定时器
+    const setupSyncTimers = () => {
+        // 自动推送间隔（毫秒）
+        const pushInterval = 300000; // 5分钟
+
+        // 自动拉取间隔（毫秒）
+        const pullInterval = 600000; // 10分钟
+
+        // 设置自动推送定时器
+        pushIntervalId = setInterval(() => {
+            if (db) syncToGitee(true); // 自动备份标记为增量
+        }, pushInterval);
+
+        // 设置自动拉取定时器
+        pullIntervalId = setInterval(() => {
+            if (db) pullFromGitee();
+        }, pullInterval);
+    };
+
+    // 保存数据到IndexDB
+    const saveData = (data) => {
+        // 确保数据库已打开
+        if (!db) {
+            console.error('数据库未打开，无法保存数据');
+            alert('数据库未打开，请稍后再试');
+            return;
+        }
+
+        // 校验数据结构是否符合预期
+        const requiredKeys = ['meta', 'buyRecords', 'sellRecords'];
+        const missingKeys = requiredKeys.filter(key => !(key in data));
+        if (missingKeys.length > 0) {
+            console.error('导入数据结构不完整，缺少以下字段:', missingKeys);
+            alert('导入数据结构不完整，请检查');
+            return;
+        }
+        const requiredMetaKeys = ['stockCode', 'stockName', 'originalCost', 'originalShares', 'exportDate'];
+        const metaMissingKeys = requiredMetaKeys.filter(key => !(key in data.meta));
+        if (metaMissingKeys.length > 0) {
+            console.error('导入数据的meta部分结构不完整，缺少以下字段:', metaMissingKeys);
+            alert('导入数据的meta部分结构不完整，请检查');
+            return;
+        }
+        // 将字符串类型的数值转换为数值类型
+        data.meta.originalCost = parseFloat(data.meta.originalCost);
+        data.meta.originalShares = parseInt(data.meta.originalShares);
+        data.buyRecords.forEach(record => {
+            record.price = parseFloat(record.price);
+            record.shares = parseInt(record.shares);
+        });
+        data.sellRecords.forEach(record => {
+            record.price = parseFloat(record.price);
+            record.shares = parseInt(record.shares);
+        });
+
+        const transaction = db.transaction('operations', 'readwrite');
+        const store = transaction.objectStore('operations');
+
+        // 创建新项，确保正确设置exportDate
+        const newItem = {
+            ...data,
+            meta: {
+                ...data.meta,
+                exportDate: new Date().toISOString()
+            }
+        };
+
+        // 显示保存中状态
+        showSyncStatus('正在保存数据...');
+
+        //const newItem = {
+        //  ...data,
+        //  exportDate: new Date().toISOString()
+        // };
+
+        const request = store.add(newItem);
+        request.onsuccess = () => {
+            console.log('数据保存成功');
+            loadData();
+            // 仅在保存成功后关闭模态框
+            closeModal();
+            // 更新最后同步时间戳
+            localStorage.setItem('lastSyncTime', new Date().toISOString());
+            showSyncStatus('数据保存成功，已触发实时备份');
+            console.log('数据保存成功');
+            // 实时备份触发
+            // 触发同步，确保在事务完成后执行
+            transaction.oncomplete = () => {
+                console.log('事务已完成，准备同步');
+                if (db) {
+                    syncToGitee(true);// 实时备份标记为增量
+                }
+            };
+        };
+        request.onerror = (e) => {
+            console.error('数据保存到数据库失败:', e);
+            alert('数据保存到数据库失败，请检查');
+        };
+
+    };
+
+    // 加载数据
+    const loadData = (searchParams = {}) => {
+        // 确保数据库已打开
+        if (!db) {
+            console.error('数据库未打开，无法加载数据');
+            return;
+        }
+        const transaction = db.transaction('operations', 'readonly');
+        const store = transaction.objectStore('operations');
+        const data = [];
+
+        const query = store.openCursor();
+        query.onsuccess = (e) => {
+            const cursor = e.target.result;
+            if (cursor) {
+                const item = cursor.value;
+                // 获取记录的id
+                item.id = cursor.key;
+                // 应用搜索条件
+                if (shouldInclude(item, searchParams)) {
+                    data.push(item);
+                }
+                cursor.continue();
+            } else {
+                // 排序并渲染
+                data.sort((a, b) => new Date(b.meta.exportDate) - new Date(a.meta.exportDate));
+                renderTable(data);
+                renderPagination(data);
+            }
+        };
+    };
+
+    // 搜索条件判断
+    const shouldInclude = (item, params) => {
+        const codeMatch = !params.code || item.meta.stockCode.includes(params.code);
+        const nameMatch = !params.name || item.meta.stockName.includes(params.name);
+        const dateMatch = !params.date || item.meta.exportDate.startsWith(params.date);
+        return codeMatch && nameMatch && dateMatch;
+    };
+
+    // 渲染表格
+    const renderTable = (data) => {
+        const tbody = document.getElementById('actionTableBody');
+        tbody.innerHTML = '';
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const currentPageData = data.slice(startIndex, endIndex);
+
+        currentPageData.forEach(item => {
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">${formatDate(item.meta.exportDate)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${item.meta.stockCode}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${item.meta.stockName}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <button class="btn bg-red-500 text-white rounded-md px-3 py-1 mr-2 hover:bg-red-600" onclick="deleteRecord(${item.id})">删除</button>
+                        <button class="btn bg-red-700 text-white rounded-md px-3 py-1 mr-2 hover:bg-red-800" onclick="deleteRecordAndSync(${item.id})">彻底删除</button>
+						<button class="btn bg-blue-500 text-white rounded-md px-3 py-1 hover:bg-blue-600" onclick="exportSingleRecord(${item.id})">导出</button>
+                    </td>
+                `;
+            row.addEventListener('dblclick', async () => {
+                try {
+                    const data = await getRecordData(item.id);
+                    const jsonData = JSON.stringify(data);
+                    const encodedData = encodeURIComponent(jsonData);
+                    // window.open(`https://flveboy.github.io/stock/stock.html?data=${encodedData}`, '_blank');
+                    window.open(`./stock.html?data=${encodedData}`, '_blank');
+                } catch (error) {
+                    console.error('获取记录数据并打开新窗口时出错:', error);
+                    alert('获取记录数据并打开新窗口时出错，请检查控制台获取详细信息');
+                }
+            });
+        });
+    };
+
+    // 渲染分页导航
+    const renderPagination = (data) => {
+        const pagination = document.getElementById('pagination');
+        pagination.innerHTML = '';
+        const totalPages = Math.ceil(data.length / itemsPerPage);
+
+        const prevButton = document.createElement('button');
+        prevButton.textContent = '上一页';
+        prevButton.classList.add('btn', 'bg-gray-300', 'text-gray-700', 'rounded-md', 'px-4', 'py-2', 'hover:bg-gray-400');
+        prevButton.disabled = currentPage === 1;
+        prevButton.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                loadData();
+            }
+        });
+        pagination.appendChild(prevButton);
+
+        for (let i = 1; i <= totalPages; i++) {
+            const pageButton = document.createElement('button');
+            pageButton.textContent = i;
+            pageButton.classList.add('btn', 'bg-gray-300', 'text-gray-700', 'rounded-md', 'px-4', 'py-2', 'hover:bg-gray-400');
+            if (i === currentPage) {
+                pageButton.classList.add('bg-blue-500', 'text-white');
+            }
+            pageButton.addEventListener('click', () => {
+                currentPage = i;
+                loadData();
+            });
+            pagination.appendChild(pageButton);
+        }
+
+        const nextButton = document.createElement('button');
+        nextButton.textContent = '下一页';
+        nextButton.classList.add('btn', 'bg-gray-300', 'text-gray-700', 'rounded-md', 'px-4', 'py-2', 'hover:bg-gray-400');
+        nextButton.disabled = currentPage === totalPages;
+        nextButton.addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                loadData();
+            }
+        });
+        pagination.appendChild(nextButton);
+    };
+
+    // 获取单条记录数据
+    const getRecordData = (id) => {
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction('operations', 'readonly');
+            const store = transaction.objectStore('operations');
+            const request = store.get(id);
+            request.onsuccess = () => {
+                console.log('获取数据成功');
+                loadData();
+                closeModal();
+                // // 更新最后同步时间戳
+                // localStorage.setItem('lastSyncTime', new Date().toISOString());
+                // showSyncStatus('数据保存成功，已触发实时同步');
+                const item = request.result;
+                const data = {
+                    meta: {
+                        ...item.meta,
+                        exportDate: item.meta.exportDate
+                    },
+                    buyRecords: item.buyRecords,
+                    sellRecords: item.sellRecords
+                };
+                resolve(data);
+            };
+            request.onerror = (e) => {
+                console.error('获取记录数据失败:', e);
+                reject(e);
+            };
+        });
+    };
+
+    // 日期格式化
+    const formatDate = (isoDate) => {
+        const date = new Date(isoDate);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    };
+
+    // 新增数据模态框
+    let buyTemplate, sellTemplate;
+    document.addEventListener('DOMContentLoaded', () => {
+        openDB();
+        // 初始化Gitee配置表单
+        loadGiteeConfig();
+
+        // 初始化模板
+        buyTemplate = document.createElement('div');
+        buyTemplate.className = 'record-row flex gap-4 mb-4';
+        buyTemplate.innerHTML = `
+                <input type="number" step="0.0001" placeholder="价格" required
+                    class="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-blue-500 focus:border-blue-500">
+                <input type="number" placeholder="股数" required
+                    class="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-blue-500 focus:border-blue-500">
+                <button class="delete-row-btn bg-red-500 text-white rounded-md px-2 py-1 hover:bg-red-600 transform transition hover:scale-105" onclick="deleteRow(this)">删除</button>
+            `;
+
+        sellTemplate = document.createElement('div');
+        sellTemplate.className = 'record-row flex gap-4 mb-4';
+        sellTemplate.innerHTML = `
+                <input type="number" step="0.0001" placeholder="价格" required
+                    class="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-blue-500 focus:border-blue-500">
+                <input type="number" placeholder="股数" required
+                    class="border border-gray-300 rounded-md px-3 py-2 w-full focus:ring-blue-500 focus:border-blue-500">
+                <button class="delete-row-btn bg-red-500 text-white rounded-md px-2 py-1 hover:bg-red-600 transform transition hover:scale-105" onclick="deleteRow(this)">删除</button>
+            `;
+
+        // 新增买入记录
+        const addBuyRecordButton = document.getElementById('addBuyRecord');
+        if (addBuyRecordButton) {
+            addBuyRecordButton.addEventListener('click', () => {
+                const container = document.getElementById('buyRecordsContainer');
+                const newRow = buyTemplate.cloneNode(true);
+                container.appendChild(newRow);
+            });
+        } else {
+            console.error('未找到添加买入记录按钮');
+        }
+
+        // 新增卖出记录
+        const addSellRecordButton = document.getElementById('addSellRecord');
+        if (addSellRecordButton) {
+            addSellRecordButton.addEventListener('click', () => {
+                const container = document.getElementById('sellRecordsContainer');
+                const newRow = sellTemplate.cloneNode(true);
+                container.appendChild(newRow);
+            });
+        } else {
+            console.error('未找到添加卖出记录按钮');
+        }
+
+        // 搜索按钮
+        const searchButton = document.getElementById('searchBtn');
+        if (searchButton) {
+            searchButton.addEventListener('click', () => {
+                // 重置页码为第一页
+                currentPage = 1;
+                const code = document.getElementById('stockCodeSearch').value.trim();
+                const name = document.getElementById('stockNameSearch').value.trim();
+                const date = document.getElementById('dateSearch').value;
+                loadData({code, name, date});
+            });
+        } else {
+            console.error('未找到搜索按钮');
+        }
+
+        // 重置按钮
+        const resetButton = document.getElementById('resetBtn');
+        if (resetButton) {
+            resetButton.addEventListener('click', () => {
+                // 重置页码为第一页
+                currentPage = 1;
+                document.getElementById('stockCodeSearch').value = '';
+                document.getElementById('stockNameSearch').value = '';
+                document.getElementById('dateSearch').value = '';
+                loadData();
+            });
+        } else {
+            console.error('未找到重置按钮');
+        }
+
+        // 新增按钮
+        const addButton = document.getElementById('addBtn');
+        if (addButton) {
+            addButton.addEventListener('click', () => {
+                resetAddForm();
+                document.getElementById('addModal').style.display = 'block';
+            });
+        } else {
+            console.error('未找到新增按钮');
+        }
+
+        // 关闭模态框
+        const closeAddModalButton = document.getElementById('closeAddModal');
+        if (closeAddModalButton) {
+            closeAddModalButton.addEventListener('click', closeModal);
+        } else {
+            console.error('未找到关闭模态框按钮');
+        }
+        window.addEventListener('click', (e) => {
+            if (e.target === document.getElementById('addModal')) {
+                closeModal();
+            }
+        });
+
+        // 导入数据
+        const importButton = document.getElementById('importBtn');
+        if (importButton) {
+            importButton.addEventListener('click', () => {
+                document.getElementById('importFile').click();
+            });
+        } else {
+            console.error('未找到导入数据按钮');
+        }
+
+        const importFileInput = document.getElementById('importFile');
+        if (importFileInput) {
+            importFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                // 检查文件类型是否为JSON
+                if (!file.name.endsWith('.json')) {
+                    alert('请上传JSON格式的文件');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        // 解析JSON数据
+                        const data = JSON.parse(event.target.result);
+                        saveData(data);
+                    } catch (error) {
+                        console.error('解析JSON文件时出错:', error);
+                        alert('解析JSON文件时出错，请检查文件内容');
+                    }
+                };
+                reader.readAsText(file);
+            });
+        } else {
+            console.error('未找到导入文件输入框');
+        }
+    });
+
+    // 关闭模态框
+    const closeModal = () => {
+        document.getElementById('addModal').style.display = 'none';
+    };
+
+    // 处理新增表单提交
+    const addForm = document.getElementById('addForm');
+    if (addForm) {
+        addForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const stockCode = document.getElementById('addStockCode').value;
+            const stockName = document.getElementById('addStockName').value;
+            const originalCost = parseFloat(document.getElementById('addOriginalCost').value);
+            const originalShares = parseInt(document.getElementById('addOriginalShares').value);
+
+            const buyRecords = Array.from(document.getElementById('buyRecordsContainer').children).map(row => ({
+                price: parseFloat(row.children[0].value),
+                shares: parseInt(row.children[1].value)
+            }));
+
+            const sellRecords = Array.from(document.getElementById('sellRecordsContainer').children).map(row => ({
+                price: parseFloat(row.children[0].value),
+                shares: parseInt(row.children[1].value)
+            }));
+
+            saveData({
+                meta: {
+                    stockCode,
+                    stockName,
+                    originalCost,
+                    originalShares,
+                    exportDate: new Date().toISOString()
+                },
+                buyRecords,
+                sellRecords
+            });
+        });
+    } else {
+        console.error('未找到新增表单');
+    }
+
+    // 重置新增表单
+    const resetAddForm = () => {
+        document.getElementById('addStockCode').value = '';
+        document.getElementById('addStockName').value = '';
+        document.getElementById('addOriginalCost').value = '';
+        document.getElementById('addOriginalShares').value = '';
+        document.getElementById('buyRecordsContainer').innerHTML = '';
+        document.getElementById('sellRecordsContainer').innerHTML = '';
+    };
+
+    // 删除记录
+    const deleteRecord = (id) => {
+        if (confirm('确定要删除这条记录吗？')) {
+            const transaction = db.transaction('operations', 'readwrite');
+            const store = transaction.objectStore('operations');
+            const request = store.delete(id);
+            request.onsuccess = () => {
+                console.log('记录删除成功');
+                loadData();
+            };
+            request.onerror = (e) => {
+                console.error('删除记录失败:', e);
+                alert('删除记录失败，请检查控制台获取详细信息');
+            };
+        }
+    };
+
+
+    // 彻底删除记录并同步到Gitee
+    const deleteRecordAndSync = async (id) => {
+        if (!confirm('确定要彻底删除这条记录吗？此操作将同时删除Gitee上的记录。')) {
+            return;
+        }
+
+        try {
+            // 获取要删除的记录
+            const record = await getRecordData(id);
+
+            // 从本地数据库删除
+            const transaction = db.transaction('operations', 'readwrite');
+            const store = transaction.objectStore('operations');
+            const deleteRequest = store.delete(id);
+
+            deleteRequest.onsuccess = async () => {
+                console.log('本地记录删除成功，准备同步到Gitee');
+
+                // 从Gitee删除对应记录
+                await removeFromGitee(record);
+
+                // 重新加载数据
+                loadData();
+
+                showSyncStatus('记录已彻底删除并同步到Gitee');
+            };
+
+            deleteRequest.onerror = (e) => {
+                console.error('本地记录删除失败:', e);
+                showSyncStatus('本地记录删除失败，请检查控制台', true);
+            };
+        } catch (error) {
+            console.error('彻底删除记录时出错:', error);
+            showSyncStatus('彻底删除记录失败:', error.message, true);
+        }
+    };
+
+    // 从Gitee删除特定记录
+    const removeFromGitee = async (recordToRemove) => {
+        const token = localStorage.getItem('giteeToken');
+        const repo = localStorage.getItem('giteeRepo');
+        const path = localStorage.getItem('giteePath');
+        if (!token || !repo || !path) {
+            showSyncStatus('请先配置Gitee同步信息', true);
+            return;
+        }
+
+        try {
+            const [owner, repoName] = repo.split('/');
+            const apiUrl = `https://gitee.com/api/v5/repos/${owner}/${repoName}/contents/${encodeURIComponent(path)}`;
+
+            // 获取Gitee上的当前数据
+            const res = await fetch(apiUrl, {
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!res.ok) {
+                const error = await res.json();
+                showSyncStatus(`获取Gitee数据失败：${error.message || '未知错误'}`, true);
+                return;
+            }
+
+            const fileData = await res.json();
+            const content = decodeURIComponent(atob(fileData.content));
+            const remoteData = JSON.parse(content);
+
+            // 过滤掉要删除的记录
+            const newData = remoteData.filter(item => {
+                // 使用与compareData相同的唯一标识逻辑
+                return `${item.meta.stockCode}_${item.meta.exportDate}` !==
+                    `${recordToRemove.meta.stockCode}_${recordToRemove.meta.exportDate}`;
+            });
+
+            // 准备请求体
+            const requestBody = {
+                content: btoa(encodeURIComponent(JSON.stringify(newData))),
+                message: `删除记录：${recordToRemove.meta.stockCode} ${new Date().toISOString()}`,
+                branch: 'master',
+                sha: fileData.sha
+            };
+
+            // 提交更新到Gitee
+            const updateRes = await fetch(apiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!updateRes.ok) {
+                const error = await updateRes.json();
+                showSyncStatus(`更新Gitee数据失败：${error.message || '未知错误'}`, true);
+                return;
+            }
+
+            // 更新最后同步时间
+            localStorage.setItem('lastSyncTime', new Date().toISOString());
+        } catch (err) {
+            console.error('从Gitee删除记录时出错:', err);
+            showSyncStatus(`同步删除到Gitee失败：${err.message}`, true);
+        }
+    };
+
+
+    // 导出单条记录
+    const exportSingleRecord = async (id) => {
+        try {
+            const data = await getRecordData(id);
+            const jsonData = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonData], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `stock-record-${id}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('导出记录时出错:', error);
+            alert('导出记录时出错，请检查控制台获取详细信息');
+        }
+    };
+
+    // 删除行
+    const deleteRow = (button) => {
+        const row = button.parentNode;
+        row.parentNode.removeChild(row);
+    };
+</script>
+</body>
+
+</html>
