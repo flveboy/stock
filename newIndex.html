@@ -410,6 +410,10 @@
                     if (!item.id) {
                         item.id = Date.now() + Math.floor(Math.random() * 1000);
                     }
+                    // 确保有importTime字段
+                    if (!item.importTime) {
+                        item.importTime = new Date().toISOString();
+                    }
                     store.add(item);
                 });
 
@@ -465,13 +469,19 @@
                 }
                 const transaction = db.transaction('operations', 'readonly');
                 const store = transaction.objectStore('operations');
+                // 检查importTime索引是否存在（现在指向顶级字段）
+                if (!store.indexNames.contains('importTime')) {
+                    reject(new Error('importTime索引不存在'));
+                    return;
+                }
+
                 // 检查exportDate索引是否存在
                 if (!store.indexNames.contains('exportDate')) {
                     reject(new Error('exportDate索引不存在'));
                     return;
                 }
                 const request = isIncremental && lastSyncTime
-                    ? store.index('exportDate').getAll(IDBKeyRange.lowerBound(lastSyncTime))
+                    ? store.index('importTime').getAll(IDBKeyRange.lowerBound(lastSyncTime))
                     : store.getAll();
                 request.onsuccess = () => resolve(request.result);
                 request.onerror = () => reject(request.error);
@@ -599,6 +609,8 @@
                 const store = db.createObjectStore('operations', {autoIncrement: true});
                 // 创建索引以便按日期查询
                 store.createIndex('exportDate', 'meta.exportDate', {unique: false});
+                // 添加新的importTime索引，用于同步控制
+                store.createIndex('importTime', 'importTime', {unique: false});
             }
         };
         request.onsuccess = (e) => {
@@ -620,10 +632,10 @@
     // 设置同步定时器
     const setupSyncTimers = () => {
         // 自动推送间隔（毫秒）
-        const pushInterval = 300000; // 5分钟
+        const pushInterval = 3600000; // 60分钟
 
         // 自动拉取间隔（毫秒）
-        const pullInterval = 600000; // 10分钟
+        const pullInterval = 1800000; // 30分钟
 
         // 设置自动推送定时器
         pushIntervalId = setInterval(() => {
@@ -636,7 +648,7 @@
         }, pullInterval);
     };
 
-    // 保存数据到IndexDB
+    // 保存数据到IndexDB，修改saveData函数，添加importTime字段
     const saveData = (data) => {
         // 确保数据库已打开
         if (!db) {
@@ -680,17 +692,17 @@
             ...data,
             meta: {
                 ...data.meta,
-                exportDate: data.meta.exportDate?data.meta.exportDate:new Date().toISOString()
-            }
+                // 只在没有exportDate时才设置新值
+                exportDate: data.meta.exportDate || new Date().toISOString()
+            },
+            //将importTime放在顶级对象中，而不是meta内
+            // 添加importTime字段，表示数据被导入到本地数据库的时间
+            importTime: new Date().toISOString()
         };
 
         // 显示保存中状态
         showSyncStatus('正在保存数据...');
 
-        //const newItem = {
-        //  ...data,
-        //  exportDate: new Date().toISOString()
-        // };
 
         const request = store.add(newItem);
         request.onsuccess = () => {
@@ -698,8 +710,7 @@
             loadData();
             // 仅在保存成功后关闭模态框
             closeModal();
-            // 更新最后同步时间戳
-            localStorage.setItem('lastSyncTime', new Date().toISOString());
+            // 不在这里更新lastSyncTime，改为在syncToGitee成功后更新
             showSyncStatus('数据保存成功，已触发实时备份');
             console.log('数据保存成功');
             // 实时备份触发
@@ -880,6 +891,14 @@
         const seconds = String(date.getSeconds()).padStart(2, '0');
         return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     };
+
+    // 仅在页面卸载时关闭数据库
+    window.addEventListener('beforeunload', () => {
+        if (db) {
+            db.close();
+            console.log('页面卸载前关闭数据库');
+        }
+    });
 
     // 新增数据模态框
     let buyTemplate, sellTemplate;
