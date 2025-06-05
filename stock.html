@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票成本计算</title>
+    <style>
+        /* 保持原始布局结构 */
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            gap: 30px;
+            padding: 30px;
+            background: #f5f7fa;
+        }
+
+        #inputSection {
+            flex: 0 0 320px;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        #tradingSection {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            min-width: 700px;
+        }
+
+        /* 删除按钮强化样式 */
+        .delete-btn {
+            background: #ff4444 !important; /* 警示红色 */
+            color: white !important;
+            padding: 10px 24px !important; /* 放大按钮尺寸 */
+            border-radius: 6px !important;
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            border: 1px solid #dc3545 !important;
+            box-shadow: 0 2px 4px rgba(255, 68, 68, 0.2) !important;
+            transition: all 0.2s ease !important;
+            min-width: 80px; /* 保证按钮宽度 */
+        }
+
+        /* 悬停效果 */
+        .delete-btn:hover {
+            background: #dc3545 !important;
+            transform: scale(1.05) translateY(-1px);
+            box-shadow: 0 3px 6px rgba(220, 53, 69, 0.3) !important;
+        }
+
+        .delete-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* 微调布局间距 */
+        #inputSection div {
+            /*  display: grid; */
+            gap: 15px;
+        }
+
+        #tradingSection > div {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 统一表格样式 */
+        table {
+            table-layout: fixed;
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+
+        /* 列宽统一定义 */
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #E0E0E0; /* 修正为灰色边框 */
+        }
+
+        /* 买入表格列宽 */
+        #buyTable th:nth-child(1),
+        #buyTable td:nth-child(1) {
+            width: 14%;
+        }
+
+        /* 价格 */
+        #buyTable th:nth-child(2),
+        #buyTable td:nth-child(2) {
+            width: 14%;
+        }
+
+        /* 股数 */
+        #buyTable th:nth-child(3),
+        #buyTable td:nth-child(3) {
+            width: 14%;
+        }
+
+        /* 佣金 */
+        #buyTable th:nth-child(4),
+        #buyTable td:nth-child(4) {
+            width: 14%;
+        }
+
+        /* 过户费 */
+        #buyTable th:nth-child(5),
+        #buyTable td:nth-child(5) {
+            width: 16%;
+        }
+
+        /* 总费用 */
+        #buyTable th:nth-child(6),
+        #buyTable td:nth-child(6) {
+            width: 14%;
+        }
+
+        /* 操作 */
+
+        /* 卖出表格列宽 */
+        #sellTable th:nth-child(1),
+        #sellTable td:nth-child(1) {
+            width: 17%;
+        }
+
+        /* 价格 */
+        #sellTable th:nth-child(2),
+        #sellTable td:nth-child(2) {
+            width: 18%;
+        }
+
+        /* 股数 */
+        #sellTable th:nth-child(3),
+        #sellTable td:nth-child(3) {
+            width: 14%;
+        }
+
+        /* 佣金 */
+        #sellTable th:nth-child(4),
+        #sellTable td:nth-child(4) {
+            width: 14%;
+        }
+
+        /* 过户费 */
+        #sellTable th:nth-child(5),
+        #sellTable td:nth-child(5) {
+            width: 14%;
+        }
+
+        /* 印花税 */
+        #sellTable th:nth-child(6),
+        #sellTable td:nth-child(6) {
+            width: 16%;
+        }
+
+        /* 总费用 */
+        #sellTable th:nth-child(7),
+        #sellTable td:nth-child(7) {
+            width: 14%;
+        }
+
+        /* 统一输入框样式 */
+        table input {
+            width: 90%;
+            padding: 8px;
+            border: 1px solid #E0E0E0;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        /* 优化输入框聚焦效果 */
+        input:focus {
+            outline: 2px solid #4a90e2;
+            border-color: transparent;
+        }
+
+        /* 输入框高度调整 */
+        input[type="text"],
+        input[type="number"] {
+            height: 44px; /* 调高输入框高度 */
+            padding: 8px 16px;
+            border: 1px solid #E0E0E0;
+            border-radius: 8px;
+            font-size: 16px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* 移除数字输入框调节按钮 */
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+
+        /* 计算按钮优化 */
+        #calculateButton,
+        button[onclick^="add"] {
+            height: 52px; /* 调高按钮高度 */
+            width: 100%;
+            background: #4CAF50; /* 新增颜色 */
+            color: white;
+            font-size: 18px;
+            font-weight: 500;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 24px; /* 调整位置间距 */
+        }
+
+        #calculateButton:hover,
+        button[onclick^="add"]:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        }
+
+        /* 容器布局调整 */
+        #inputSection {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 28px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        /* 结果展示样式 */
+        #result {
+            padding: 20px;
+            background: #f8fff8;
+            border: 1px solid #c8e6c9;
+            border-radius: 8px;
+            /* margin-top: 25px; */
+        }
+
+        .result-header {
+            font-size: 1.2em;
+            color: #2e7d32;
+            margin-bottom: 15px;
+        }
+
+        .fee-details h4 {
+            color: #616161;
+            margin: 10px 0;
+        }
+
+        .fee-details ul {
+            list-style: none;
+            padding-left: 20px;
+        }
+
+        .fee-details li::before {
+            content: "•";
+            color: #2196F3;
+            margin-right: 8px;
+        }
+
+        /* 新增操作按钮样式 */
+        .data-ops {
+            margin-bottom: 20px;
+            display: grid;
+            gap: 15px;
+        }
+
+        .import-export-btn {
+            font-size: 18px;
+            padding: 12px 24px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .import-export-btn:hover {
+            background: #1976D2;
+            transform: translateY(-1px);
+        }
+
+        /* 新增按钮组样式 */
+        .button-group {
+            display: flex;
+            flex-direction: column; /* 垂直排列按钮 */
+            gap: 15px;
+            margin-top: -24px;
+        }
+
+        #calculateButton,
+        .export-btn {
+            height: 52px;
+            background: #4CAF50;
+            color: white;
+            font-size: 18px;
+            font-weight: 500;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .export-btn {
+            background: #2196F3; /* 蓝色区分功能 */
+        }
+
+        #calculateButton:hover,
+        .export-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        /* 新增行布局样式 */
+        .input-row {
+            display: flex;
+            align-items: center;
+            /* margin-bottom: 18px; */
+            width: 100%;
+        }
+
+        .input-row label {
+            font-size: 16px;
+            font-weight: 500;
+            color: #333;
+            white-space: nowrap; /* 防止文字换行 */
+        }
+
+        .input-row input {
+            flex: 1;
+            min-width: 200px; /* 防止内容过长导致溢出 */
+            height: 44px;
+            padding: 0 12px;
+            border: 1px solid #E0E0E0;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        /* 模态框样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 400px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            animation-name: modalFadeIn;
+            animation-duration: 0.4s;
+        }
+
+        @keyframes modalFadeIn {
+            from {opacity: 0; transform: translateY(-20px);}
+            to {opacity: 1; transform: translateY(0);}
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #45a049;
+        }
+
+        .btn-secondary {
+            background-color: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background-color: #e0e0e0;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        /* 修正成本样式 */
+        .correction-result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f0f8ff;
+            border-radius: 8px;
+            border-left: 4px solid #2196F3;
+        }
+
+        .correction-result h4 {
+            margin-top: 0;
+            color: #2196F3;
+        }
+    </style>
+</head>
+
+<body>
+<!-- 左侧输入模块 -->
+<div id="inputSection">
+    <div class="data-ops">
+        <button class="import-export-btn" onclick="document.getElementById('fileInput').click()">导入数据</button>
+        <input type="file" id="fileInput" hidden accept=".json" onchange="importData(this)">
+    </div>
+    <div class="input-row">
+        <label for="stockCode">股票代码：</label>
+        <input type="text" id="stockCode" placeholder="请输入股票代码">
+    </div>
+    <div class="input-row">
+        <label for="stockName">股票名称：</label>
+        <input type="text" id="stockName" placeholder="请输入股票名称">
+    </div>
+    <div class="input-row">
+        <label for="originalCost">持仓成本：</label>
+        <input type="number" id="originalCost" placeholder="请输入原每股成本">
+    </div>
+    <div class="input-row">
+        <label for="originalShares">持仓股数：</label>
+        <input type="number" id="originalShares" placeholder="请输入原持仓股数">
+    </div>
+    <div class="button-group">
+        <button id="calculateButton" onclick="calculate()">计算新成本</button>
+        <button id="correctCostBtn" class="export-btn" onclick="openCostCorrectionModal()">修正成本</button>
+        <button class="export-btn" onclick="exportData()">导出数据</button>
+    </div>
+    <div id="result"></div>
+</div>
+
+<!-- 右侧交易模块 -->
+<div id="tradingSection">
+    <div>
+        <h2>买入记录</h2>
+        <table id="buyTable">
+            <thead>
+            <tr>
+                <th>买入价格</th>
+                <th>买入股数</th>
+                <th>佣金</th>
+                <th>过户费</th>
+                <th>总费用</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+        <button onclick="addBuyRecord()">新增买入记录</button>
+    </div>
+    <div>
+        <h2>卖出记录</h2>
+        <table id="sellTable">
+            <thead>
+            <tr>
+                <th>卖出价格</th>
+                <th>卖出股数</th>
+                <th>佣金</th>
+                <th>过户费</th>
+                <th>印花税</th>
+                <th>总费用</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+        <button onclick="addSellRecord()">新增卖出记录</button>
+    </div>
+</div>
+
+<!-- 成本修正模态框 -->
+<div id="costCorrectionModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>成本修正</h3>
+            <span class="close" onclick="closeCostCorrectionModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="currentCost">当前计算成本：</label>
+                <input type="text" id="currentCost" readonly>
+            </div>
+            <div class="form-group">
+                <label for="correctedCost">修正后成本：</label>
+                <input type="number" id="correctedCost" placeholder="请输入修正后的成本">
+            </div>
+<!--            <div class="form-group">-->
+<!--                <label for="correctionReason">修正原因：</label>-->
+<!--                <input type="text" id="correctionReason" placeholder="请输入修正原因">-->
+<!--            </div>-->
+            <div class="correction-result" id="correctionResult">
+                <h4>修正说明</h4>
+                <p>输入期望的成本值，系统将自动计算需要调整的金额。</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeCostCorrectionModal()">取消</button>
+            <button class="btn btn-primary" onclick="applyCostCorrection()">应用修正</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 在目标页面的 JavaScript 中添加以下代码
+    const urlParams = new URLSearchParams(window.location.search);
+    const encodedData = urlParams.get('data');
+    if (encodedData) {
+        const jsonData = decodeURIComponent(encodedData);
+        const data = JSON.parse(jsonData);
+        // 调用目标页面的导入数据功能，这里假设存在一个名为 importData 的函数
+        importPathData(data);
+    }
+
+    // 新增的导入功能
+    function importPathData(data) {
+        try {
+            // 清空现有数据
+            document.getElementById('stockCode').value = data.meta.stockCode || '';
+            document.getElementById('stockName').value = data.meta.stockName || '';
+            document.getElementById('originalCost').value = data.meta.originalCost || '';
+            document.getElementById('originalShares').value = data.meta.originalShares || '';
+
+            // 保存修正成本数据
+            let correctedCost = data.correctedCost;
+            // const correctionReason = data.correctionReason;
+
+            // 清空表格
+            const clearTable = (tableId) => {
+                const table = document.getElementById(tableId);
+                while (table.rows.length > 1) table.deleteRow(1);
+            };
+            clearTable('buyTable');
+            clearTable('sellTable');
+
+            // 加载买入记录
+            data.buyRecords.forEach(record => {
+                addBuyRecord();
+                const rows = document.querySelectorAll('#buyTable tr:not(:first-child)');
+                const lastRow = rows[rows.length - 1];
+                lastRow.cells[0].querySelector('input').value = record.price;
+                lastRow.cells[1].querySelector('input').value = record.shares;
+            });
+
+            // 加载卖出记录
+            data.sellRecords.forEach(record => {
+                addSellRecord();
+                const rows = document.querySelectorAll('#sellTable tr:not(:first-child)');
+                const lastRow = rows[rows.length - 1];
+                lastRow.cells[0].querySelector('input').value = record.price;
+                lastRow.cells[1].querySelector('input').value = record.shares;
+            });
+
+            // 自动计算新成本
+            calculate();
+
+            // 如果有修正成本数据，在计算后应用
+            if (correctedCost /*&& correctionReason*/) {
+                correctedCost= parseFloat(correctedCost);
+                // 模拟用户点击修正按钮并填写数据
+                window.calculationResult = {
+                    ...window.calculationResult,
+                    correctedCost:correctedCost
+                };
+
+                // 更新结果区域显示修正信息  <li>修正原因：${correctionReason}</li>    <li>调整金额：已根据导入数据自动调整</li>
+                const resultDiv = document.getElementById('result');
+                resultDiv.innerHTML += `
+                        <div class="correction-result">
+                            <h4>成本已修正</h4>
+                            <ul>
+
+                                <li>修正后成本：<strong>${formatCost(correctedCost)}</strong></li>
+
+                            </ul>
+                        </div>
+                    `;
+
+                // 保存修正数据到全局变量
+                document.getElementById('correctedCost').value = correctedCost;
+                // document.getElementById('correctionReason').value = correctionReason;
+            }
+
+        } catch (error) {
+            console.error('数据加载失败:', error);
+            alert('数据格式错误!');
+        }
+    }
+
+    // 独立格式化方法
+    function formatFee(value) {
+        if (isNaN(value)) return '0';
+        const isNegative = value < 0;
+        const absValue = Math.abs(value); // 先取绝对值进行逻辑处理
+        const formatted = absValue.toFixed(2); // 此处为无符号的字符串（如 "2313.00"）
+        const endsWithZeroZero = formatted.endsWith('.00');
+        let result;
+        if (endsWithZeroZero) {
+            result = absValue.toFixed(0); // 去掉无意义的零和小数点
+        } else {
+            result = formatted.replace(/\.?0+$/, '');
+            // 例如 "2313.40" → 替换末尾冗余的零 → "2313.4"
+        }
+        // 最后根据符号添加负号
+        if (isNegative) {
+            result = `-${result}`;
+        }
+        return result;
+    }
+
+    function formatCost(value) {
+        if (isNaN(value) || value === 0) return '0';
+        const formatted = value.toFixed(4);
+        return formatted.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.$/, '');
+    }
+
+    // 新增的导出功能
+    function exportData() {
+        // 日期格式化（精确到秒）
+        const formatDateTime = (date) => {
+            return [
+                date.getFullYear(),
+                (date.getMonth() + 1).toString().padStart(2, '0'),
+                date.getDate().toString().padStart(2, '0'),
+                '_',
+                date.getHours().toString().padStart(2, '0'),
+                date.getMinutes().toString().padStart(2, '0'),
+                date.getSeconds().toString().padStart(2, '0')
+            ].join(''); // 示例输出：20240220_153045
+        };
+        // 获取股票代码并清理特殊字符
+        const stockCode = document.getElementById('stockCode').value.replace(/[^a-zA-Z0-9]/g, '_') || 'unknown_stock';
+
+        // 生成标准化日期（YYYY-MM-DD）
+        const dateString = new Date().toISOString().slice(0, 10);
+        const timestamp = formatDateTime(new Date());
+        // 构建文件名
+        const fileName = `${stockCode}_${timestamp}.json`;
+        const data = {
+            meta: {
+                stockCode: document.getElementById('stockCode').value,
+                stockName: document.getElementById('stockName').value,
+                originalCost: document.getElementById('originalCost').value,
+                originalShares: document.getElementById('originalShares').value,
+                exportDate: new Date().toISOString()
+            },
+            buyRecords: Array.from(document.querySelectorAll('#buyTable tr:not(:first-child)')).map(row => ({
+                price: row.cells[0].querySelector('input').value,
+                shares: row.cells[1].querySelector('input').value
+            })),
+            sellRecords: Array.from(document.querySelectorAll('#sellTable tr:not(:first-child)')).map(row => ({
+                price: row.cells[0].querySelector('input').value,
+                shares: row.cells[1].querySelector('input').value
+            })),
+            // 添加修正成本信息
+            correctedCost: document.getElementById('correctedCost')?.value || null,
+            // correctionReason: document.getElementById('correctionReason')?.value || null,
+            correctionDate: new Date().toISOString()
+        };
+
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // 新增的导入功能
+    function importData(fileInput) {
+        const file = fileInput.files[0];
+        if (!file) return;
+        window.calculationResult=null;
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                const data = JSON.parse(e.target.result);
+
+                // 清空现有数据
+                document.getElementById('stockCode').value = data.meta.stockCode || '';
+                document.getElementById('stockName').value = data.meta.stockName || '';
+                document.getElementById('originalCost').value = data.meta.originalCost || '';
+                document.getElementById('originalShares').value = data.meta.originalShares || '';
+
+                if(document.getElementById('originalCost').value === ''){
+                    document.getElementById('originalCost').value=0;
+                }
+                if(document.getElementById('originalShares').value === ''){
+                    document.getElementById('originalShares').value=0;
+                }
+
+                // 清空表格
+                const clearTable = (tableId) => {
+                    const table = document.getElementById(tableId);
+                    while (table.rows.length > 1) table.deleteRow(1);
+                };
+                clearTable('buyTable');
+                clearTable('sellTable');
+
+                // 加载买入记录
+                data.buyRecords.forEach(record => {
+                    addBuyRecord();
+                    const rows = document.querySelectorAll('#buyTable tr:not(:first-child)');
+                    const lastRow = rows[rows.length - 1];
+                    lastRow.cells[0].querySelector('input').value = record.price;
+                    lastRow.cells[1].querySelector('input').value = record.shares;
+                });
+
+                // 加载卖出记录
+                data.sellRecords.forEach(record => {
+                    addSellRecord();
+                    const rows = document.querySelectorAll('#sellTable tr:not(:first-child)');
+                    const lastRow = rows[rows.length - 1];
+                    lastRow.cells[0].querySelector('input').value = record.price;
+                    lastRow.cells[1].querySelector('input').value = record.shares;
+                });
+
+                // 自动计算新成本
+                calculate();
+
+                // 如果有修正成本数据，填充到修正字段
+                if (data.correctedCost) {
+
+                    // 保存修正成本数据
+                    let correctedCost = data.correctedCost;
+                    // const correctionReason = data.correctionReason;
+
+                    // 如果有修正成本数据，在计算后应用
+                    if (correctedCost /*&& correctionReason*/) {
+                        correctedCost= parseFloat(correctedCost);
+                        // 模拟用户点击修正按钮并填写数据
+                        window.calculationResult = {
+                            ...window.calculationResult,
+                            correctedCost:correctedCost
+                        };
+
+                        // 更新结果区域显示修正信息  <li>修正原因：${correctionReason}</li>  <li>调整金额：已根据导入数据自动调整</li>
+                        const resultDiv = document.getElementById('result');
+                        resultDiv.innerHTML += `
+                        <div class="correction-result">
+                            <h4>成本已修正</h4>
+                            <ul>
+
+                                <li>修正后成本：<strong>${formatCost(correctedCost)}</strong></li>
+
+                            </ul>
+                        </div>
+                    `;
+
+                        // 保存修正数据到全局变量
+                        document.getElementById('correctedCost').value = correctedCost;
+                        // document.getElementById('correctionReason').value = correctionReason;
+                    }
+
+                    // document.getElementById('correctedCost').value = data.correctedCost;
+                    // document.getElementById('correctionReason').value = data.correctionReason || '';
+                }
+
+                // 重置文件输入以允许重复选择同一文件
+                fileInput.value = '';
+            } catch (error) {
+                console.error('导入失败:', error);
+                alert('文件格式错误，请选择正确的数据文件');
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    // 动态添加行时保持列宽一致
+    function createTableRow(tableId, columns) {
+        const table = document.getElementById(tableId);
+        const row = table.insertRow();
+
+        columns.forEach((col, index) => {
+            const cell = row.insertCell(index);
+            cell.style.width = getComputedStyle(table.rows[0].cells[index]).width;
+
+            if (col.type === 'input') {
+                const input = document.createElement('input');
+                input.type = col.inputType || 'text';
+                input.placeholder = col.placeholder;
+                cell.appendChild(input);
+            } else if (col.type === 'button') {
+                const button = document.createElement('button');
+                button.textContent = col.text;
+                button.onclick = col.action;
+                cell.appendChild(button);
+            }
+        });
+    }
+
+    function addBuyRecord() {
+        const table = document.getElementById('buyTable');
+        const row = table.insertRow();
+        const priceCell = row.insertCell(0);
+        const sharesCell = row.insertCell(1);
+        const commissionCell = row.insertCell(2);
+        const transferCell = row.insertCell(3);
+        const totalFeeCell = row.insertCell(4);
+        const actionCell = row.insertCell(5);
+
+        const priceInput = document.createElement('input');
+        priceInput.type = 'number';
+        priceInput.placeholder = '买入价格';
+        priceCell.appendChild(priceInput);
+
+        const sharesInput = document.createElement('input');
+        sharesInput.type = 'number';
+        sharesInput.placeholder = '买入股数';
+        sharesCell.appendChild(sharesInput);
+
+        const commissionSpan = document.createElement('span');
+        commissionCell.appendChild(commissionSpan);
+
+        const transferSpan = document.createElement('span');
+        transferCell.appendChild(transferSpan);
+
+        const totalFeeSpan = document.createElement('span');
+        totalFeeCell.appendChild(totalFeeSpan);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = '删除';
+        deleteButton.className = 'delete-btn';
+        deleteButton.onclick = function () {
+            table.deleteRow(row.rowIndex);
+        };
+        actionCell.appendChild(deleteButton);
+    }
+
+    function addSellRecord() {
+        const table = document.getElementById('sellTable');
+        const row = table.insertRow();
+        const priceCell = row.insertCell(0);
+        const sharesCell = row.insertCell(1);
+        const commissionCell = row.insertCell(2);
+        const transferCell = row.insertCell(3);
+        const stampCell = row.insertCell(4);
+        const totalFeeCell = row.insertCell(5);
+        const actionCell = row.insertCell(6);
+
+        const priceInput = document.createElement('input');
+        priceInput.type = 'number';
+        priceInput.placeholder = '卖出价格';
+        priceCell.appendChild(priceInput);
+
+        const sharesInput = document.createElement('input');
+        sharesInput.type = 'number';
+        sharesInput.placeholder = '卖出股数';
+        sharesCell.appendChild(sharesInput);
+
+        const commissionSpan = document.createElement('span');
+        commissionCell.appendChild(commissionSpan);
+
+        const transferSpan = document.createElement('span');
+        transferCell.appendChild(transferSpan);
+
+        const stampSpan = document.createElement('span');
+        stampCell.appendChild(stampSpan);
+
+        const totalFeeSpan = document.createElement('span');
+        totalFeeCell.appendChild(totalFeeSpan);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = '删除';
+        deleteButton.className = 'delete-btn';
+        deleteButton.onclick = function () {
+            table.deleteRow(row.rowIndex);
+        };
+        actionCell.appendChild(deleteButton);
+    }
+
+    function calculate() {
+        try {
+            // 初始化核心数据
+            const stockCode = document.getElementById('stockCode').value || '';
+            const originalCost = parseFloat(document.getElementById('originalCost').value) || 0;
+            const originalShares = parseInt(document.getElementById('originalShares').value) || 0;
+            let totalBuyCost = 0, totalBuyShares = 0, totalBuyAmount = 0;
+            let totalSellIncome = 0, totalSellShares = 0, totalSellAmount = 0;
+            let correctedCost=0;
+
+            // ==== 买入计算 ====
+            const buyTable = document.getElementById('buyTable');
+            Array.from(buyTable.rows).slice(1).forEach(row => {
+                // 输入值安全获取
+                const price = parseFloat(row.cells[0]?.querySelector('input')?.value) || 0;
+                const shares = parseInt(row.cells[1]?.querySelector('input')?.value) || 0;
+
+                // 费用计算
+                const commission = (price && shares) ? Math.max(price * shares * 0.0000854, 5) : 0;
+                const transferFee = (price && shares && stockCode.startsWith('6')) ? price * shares * 0.00001 : 0;
+                const totalFee = commission + transferFee;
+
+                // 更新显示（防御性编程）
+                const updateCell = (index, value) => {
+                    const span = row.cells[index]?.querySelector('span');
+                    if (span) span.textContent = formatFee(value);
+                };
+                updateCell(2, commission);
+                updateCell(3, transferFee);
+                updateCell(4, totalFee);
+
+                // 累计买入数据
+                totalBuyAmount += price * shares;   // 原始交易金额
+                // 累加成本
+                totalBuyCost += (price * shares) + commission + transferFee;
+                totalBuyShares += shares;
+            });
+
+            // ==== 卖出计算 ====
+            const sellTable = document.getElementById('sellTable');
+            Array.from(sellTable.rows).slice(1).forEach(row => {
+                const price = parseFloat(row.cells[0]?.querySelector('input')?.value) || 0;
+                const shares = parseInt(row.cells[1]?.querySelector('input')?.value) || 0;
+
+                // 费用计算
+                const commission = (price && shares) ? Math.max(price * shares * 0.0000854, 5) : 0;
+                const transferFee = (price && shares && stockCode.startsWith('6')) ? price * shares * 0.00001 : 0;
+                const stampDuty = (price && shares) ? price * shares * 0.0005 : 0;
+                const totalFee = commission + transferFee + stampDuty;
+
+                // 更新显示（应用格式化）
+                const updateCell = (index, value) => {
+                    const span = row.cells[index]?.querySelector('span');
+                    if (span) span.textContent = formatFee(value);
+                };
+                updateCell(2, commission);
+                updateCell(3, transferFee);
+                updateCell(4, stampDuty);
+                updateCell(5, totalFee);
+
+                // 累计卖出数据
+                totalSellAmount += price * shares;  // 原始交易金额
+                // 累加收入
+                totalSellIncome += (price * shares) - totalFee;
+                totalSellShares += shares;
+            });
+
+            // ==== 最终成本计算 ====
+            const remainingShares = originalShares + totalBuyShares - totalSellShares;
+            const remainingCost = (originalCost * originalShares) + totalBuyCost - totalSellIncome;
+
+            // 异常处理
+            if (remainingShares < 0) {
+                alert("错误：卖出数量超过总持仓量");
+                return;
+            }
+
+            const newCost = remainingShares > 0 ? remainingCost / remainingShares : 0;
+
+            // ==== 均价计算 ====
+            const buyAvgPrice = totalBuyShares > 0 ? totalBuyAmount / totalBuyShares : 0;
+            const sellAvgPrice = totalSellShares > 0 ? totalSellAmount / totalSellShares : 0;
+
+            // ==== 结果展示 ====
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `
+            <div class="result-header">新成本：<strong>${formatCost(newCost)}</strong></div>
+            <div class="fee-details">
+                <h4>持仓信息</h4>
+                <ul>
+                    <li>现持仓股数：${remainingShares.toFixed(0)} 股</li>
+                    ${totalBuyShares > 0 ? `<li>买入均价：${formatCost(buyAvgPrice)}</li>` : ''}
+                    ${totalSellShares > 0 ? `<li>卖出均价：${formatCost(sellAvgPrice)}</li>` : ''}
+                    <li>浮动盈亏：${formatFee(totalSellIncome - totalBuyCost)}</li>
+                    <li>买入金额：${formatFee(totalBuyCost)}</li>
+                    <li>卖出金额：${formatFee(totalSellIncome)}</li>
+                </ul>
+            </div>
+        `;
+
+            // 保存计算结果，供修正功能使用
+            window.calculationResult = {
+                newCost,
+                remainingShares,
+                remainingCost,
+                totalBuyCost,
+                totalSellIncome,
+                correctedCost
+            };
+
+        } catch (error) {
+            console.error("计算错误详情:", {
+                error: error.stack,
+                buyTableRows: document.getElementById('buyTable').rows.length,
+                sellTableRows: document.getElementById('sellTable').rows.length
+            });
+            alert("计算失败，请检查输入数据是否完整");
+        }
+    }
+
+    // 成本修正功能
+    function openCostCorrectionModal() {
+        // 检查是否已经计算过成本
+        if (!window.calculationResult) {
+            alert("请先计算成本！");
+            return;
+        }
+
+        const { newCost, correctedCost } = window.calculationResult;
+        document.getElementById('currentCost').value = formatCost(newCost);
+        document.getElementById('correctedCost').value = formatCost(correctedCost) || '';
+        // document.getElementById('correctionReason').value = '';
+
+        if(document.getElementById('correctedCost').value==='0'){
+            document.getElementById('correctedCost').value = '';
+        }
+
+        updateCorrectionPreview();
+
+        // 显示模态框
+        document.getElementById('costCorrectionModal').style.display = 'block';
+
+        // 监听修正成本输入变化
+        document.getElementById('correctedCost').addEventListener('input', updateCorrectionPreview);
+    }
+
+    function closeCostCorrectionModal() {
+        document.getElementById('costCorrectionModal').style.display = 'none';
+        document.getElementById('correctedCost').removeEventListener('input', updateCorrectionPreview);
+    }
+
+    function updateCorrectionPreview() {
+        if (!window.calculationResult) return;
+
+        const { newCost, remainingShares, remainingCost } = window.calculationResult;
+        const correctedCost = parseFloat(document.getElementById('correctedCost').value);
+
+        if (isNaN(correctedCost) || correctedCost <= 0) {
+            document.getElementById('correctionResult').innerHTML = `
+                <h4>修正说明</h4>
+                <p>输入期望的成本值，系统将自动计算需要调整的金额。</p>
+            `;
+            return;
+        }
+
+        // 计算需要调整的金额
+        const adjustedAmount = (correctedCost * remainingShares) - remainingCost;
+        const adjustmentPercentage = (adjustedAmount / remainingCost) * 100;
+
+        // 显示修正预览
+        document.getElementById('correctionResult').innerHTML = `
+            <h4>修正预览</h4>
+            <ul>
+                <li>当前计算成本：${formatCost(newCost)}</li>
+                <li>修正后成本：${formatCost(correctedCost)}</li>
+                <li>需要调整金额：${adjustedAmount > 0 ? '+' : ''}${formatFee(adjustedAmount)}</li>
+                <li>调整比例：${adjustmentPercentage > 0 ? '+' : ''}${Math.abs(adjustmentPercentage).toFixed(2)}%</li>
+            </ul>
+        `;
+    }
+
+    function applyCostCorrection() {
+        const correctedCostInput = document.getElementById('correctedCost');
+        const correctedCost = parseFloat(correctedCostInput.value);
+        // const correctionReason = document.getElementById('correctionReason').value;
+
+        if (isNaN(correctedCost) || correctedCost <= 0) {
+            alert("请输入有效的修正成本值！");
+            return;
+        }
+
+        // if (!correctionReason.trim()) {
+        //     alert("请输入修正原因！");
+        //     return;
+        // }
+
+        // 应用修正
+        const { remainingShares, remainingCost } = window.calculationResult;
+        const adjustedAmount = (correctedCost * remainingShares) - remainingCost;
+
+        // 更新结果显示  <li>修正原因：${correctionReason}</li>
+        const resultDiv = document.getElementById('result');
+        // 查找并移除现有的修正结果框
+        const existingCorrection = resultDiv.querySelector('.correction-result');
+        if (existingCorrection) {
+            resultDiv.removeChild(existingCorrection);
+        }
+
+        resultDiv.innerHTML += `
+            <div class="correction-result">
+                <h4>成本已修正</h4>
+                <ul>
+
+                    <li>修正后成本：<strong>${formatCost(correctedCost)}</strong></li>
+                    <li>调整金额：${adjustedAmount > 0 ? '+' : ''}${formatFee(adjustedAmount)}</li>
+                </ul>
+            </div>
+        `;
+
+        window.calculationResult.correctedCost = correctedCost;
+
+        // 关闭模态框
+        closeCostCorrectionModal();
+    }
+
+    // 点击模态框外部关闭
+    window.onclick = function(event) {
+        const modal = document.getElementById('costCorrectionModal');
+        if (event.target === modal) {
+            closeCostCorrectionModal();
+        }
+    }
+</script>
+</body>
+</html>
