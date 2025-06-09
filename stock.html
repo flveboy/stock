@@ -489,7 +489,8 @@
         <input type="number" id="originalShares" placeholder="请输入原持仓股数">
     </div>
     <div class="button-group">
-        <button id="calculateButton" onclick="calculate()">计算新成本</button>
+         <!--计算新成本时去掉成本修正信息-->
+        <button id="calculateButton" onclick="calculateWithoutCorrectInfo()">计算新成本</button>
         <button id="correctCostBtn" class="export-btn" onclick="openCostCorrectionModal()">修正成本</button>
         <button class="export-btn" onclick="exportData()">导出数据</button>
     </div>
@@ -721,9 +722,10 @@
                 shares: row.cells[1].querySelector('input').value
             })),
             // 添加修正成本信息
-            correctedCost: document.getElementById('correctedCost')?.value || null,
+            correctedCost: document.getElementById('correctedCost')?.value || '',
+            correctionDate: document.getElementById('correctedCost')?.value? new Date().toISOString():''
             // correctionReason: document.getElementById('correctionReason')?.value || null,
-            correctionDate: new Date().toISOString()
+            // correctionDate: new Date().toISOString()
         };
 
         const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
@@ -1058,6 +1060,13 @@
         }
     }
 
+    // 点击成本计算时，如果原来有成本修正信息，在这里要进行清空
+    function calculateWithoutCorrectInfo(){
+        calculate();
+        // 安全清除修正信息（如果元素存在）
+        const correctedCostEl = document.getElementById('correctedCost');
+        if (correctedCostEl) correctedCostEl.value = '';
+    }
     // 成本修正功能
     function openCostCorrectionModal() {
         // 检查是否已经计算过成本
@@ -1067,12 +1076,17 @@
         }
 
         const { newCost, correctedCost } = window.calculationResult;
-        document.getElementById('currentCost').value = formatCost(newCost);
-        document.getElementById('correctedCost').value = formatCost(correctedCost) || '';
-        // document.getElementById('correctionReason').value = '';
 
-        if(document.getElementById('correctedCost').value==='0'){
-            document.getElementById('correctedCost').value = '';
+        // 安全设置当前成本（如果元素存在）
+        const currentCostEl = document.getElementById('currentCost');
+        if (currentCostEl) {
+            currentCostEl.value = formatCost(newCost);
+        }
+
+        // 处理修正成本显示（0值转为空）
+        const correctedCostEl = document.getElementById('correctedCost');
+        if (correctedCostEl) {
+            correctedCostEl.value = correctedCost === 0 ? '' : formatCost(correctedCost);
         }
 
         updateCorrectionPreview();
@@ -1101,6 +1115,12 @@
                 <p>输入期望的成本值，系统将自动计算需要调整的金额。</p>
             `;
             return;
+        }
+
+        // 安全添加当前时间戳（ISO格式）
+        const correctionDateEl = document.getElementById('correctionDate');
+        if (correctionDateEl) {
+            correctionDateEl.value = new Date().toISOString();
         }
 
         // 计算需要调整的金额
