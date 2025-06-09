@@ -1116,13 +1116,6 @@
             `;
             return;
         }
-
-        // 安全添加当前时间戳（ISO格式）
-        const correctionDateEl = document.getElementById('correctionDate');
-        if (correctionDateEl) {
-            correctionDateEl.value = new Date().toISOString();
-        }
-
         // 计算需要调整的金额
         const adjustedAmount = (correctedCost * remainingShares) - remainingCost;
         const adjustmentPercentage = (adjustedAmount / remainingCost) * 100;
