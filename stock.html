@@ -642,8 +642,10 @@
             // 清空现有数据
             document.getElementById('stockCode').value = data.meta.stockCode || '';
             document.getElementById('stockName').value = data.meta.stockName || '';
-            document.getElementById('originalCost').value = data.meta.originalCost || '';
-            document.getElementById('originalShares').value = data.meta.originalShares || '';
+
+            // 修复数据为0时不显示的问题
+            document.getElementById('originalCost').value = data.meta.originalCost !== undefined && data.meta.originalCost !== null ? data.meta.originalCost : '';
+            document.getElementById('originalShares').value = data.meta.originalShares !== undefined && data.meta.originalShares !== null ? data.meta.originalShares : '';
 
             // 保存修正成本数据
             const correctedCost = data.correctedCost;
