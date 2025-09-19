@@ -731,9 +731,6 @@
 
     // 加载数据
     const loadData = (searchParams = {}) => {
-		// 新增：每次加载数据时重置页码为1
-    	currentPage = 1;
-		
         // 确保数据库已打开
         if (!db) {
             console.error('数据库未打开，无法加载数据');
