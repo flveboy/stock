@@ -731,6 +731,9 @@
 
     // 加载数据
     const loadData = (searchParams = {}) => {
+		// 新增：每次加载数据时重置页码为1
+    	currentPage = 1;
+		
         // 确保数据库已打开
         if (!db) {
             console.error('数据库未打开，无法加载数据');
@@ -761,12 +764,20 @@
         };
     };
 
-    // 搜索条件判断
+    // 搜索条件判断（新增最近15天过滤）
     const shouldInclude = (item, params) => {
         const codeMatch = !params.code || item.meta.stockCode.includes(params.code);
         const nameMatch = !params.name || item.meta.stockName.includes(params.name);
         const dateMatch = !params.date || item.meta.exportDate.startsWith(params.date);
-        return codeMatch && nameMatch && dateMatch;
+
+		// 2. 新增：最近15天过滤（仅当未手动指定日期搜索时生效）
+	    const fifteenDaysAgo = new Date();
+	    fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15); // 计算15天前的日期
+	    const isWithin15Days = new Date(item.meta.exportDate) >= fifteenDaysAgo;
+	    const timeMatch = params.date ? true : isWithin15Days; // 手动指定日期时，跳过时间过滤
+
+    	// 3. 所有条件同时满足才显示
+		return codeMatch && nameMatch && dateMatch;
     };
 
     // 渲染表格
