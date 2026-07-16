@@ -1,6 +1,9 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
     restart: unless-stopped
     ports:
       - "${APP_PORT:-3000}:3000"
@@ -23,7 +26,7 @@ services:
       - no-new-privileges:true
 
   postgres:
-    image: postgres:17-alpine
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
     restart: unless-stopped
     shm_size: 128mb
     environment:
@@ -42,7 +45,7 @@ services:
       - no-new-privileges:true
 
   redis:
-    image: redis:7.4-alpine
+    image: ${REDIS_IMAGE:-redis:7.4-alpine}
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:

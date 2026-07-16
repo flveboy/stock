@@ -81,6 +81,32 @@ http://NAS-IP:3000
 
 如果 `3000` 端口被占用，可在 `.env` 中修改 `APP_PORT`。
 
+### 飞牛镜像代理返回 401
+
+如果构建时出现类似错误：
+
+```text
+docker.fnnas.com/v2/library/node/manifests/22-alpine: 401 Unauthorized
+```
+
+这是飞牛内置 Docker Hub 代理失效，不是项目镜像标签错误。先在 `.env` 中覆盖三个镜像地址，绕过 `docker.fnnas.com`：
+
+```dotenv
+NODE_IMAGE=docker.1ms.run/library/node:22-alpine
+POSTGRES_IMAGE=docker.1ms.run/library/postgres:17-alpine
+REDIS_IMAGE=docker.1ms.run/library/redis:7.4-alpine
+```
+
+然后重新拉取并构建：
+
+```bash
+docker compose pull postgres redis
+docker compose build --no-cache app
+docker compose up -d
+```
+
+也可以在飞牛 Docker 的镜像仓库设置中移除或修复 `https://docker.fnnas.com`，恢复后继续使用 `.env.example` 里的官方默认镜像。第三方镜像加速地址只负责代理相同的公开镜像，长期部署建议在网络允许时切回 Docker Hub 官方源。
+
 ## 数据保存位置
 
 数据库通过绑定目录保存在项目文件夹中：
