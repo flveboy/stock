@@ -143,7 +143,7 @@ app.post("/api/import", requireAuth, asyncRoute(async (req, res) => {
 app.get("/", (_req, res) => res.sendFile(path.join(root, "index.html")));
 app.get("/styles.css", (_req, res) => res.sendFile(path.join(root, "styles.css")));
 app.get("/vendor/chart.umd.js", (_req, res) => res.sendFile(path.join(root, "node_modules", "chart.js", "dist", "chart.umd.js")));
-app.use("/js", express.static(path.join(root, "js"), { fallthrough: false, maxAge: "1h" }));
+app.use("/js", express.static(path.join(root, "js"), { fallthrough: false, maxAge: 0 }));
 
 app.use((error, _req, res, _next) => {
   console.error(error);
