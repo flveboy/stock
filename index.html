@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="股票持仓成本、做 T 测算与交易复盘工具">
+  <title>持仓账本</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand-row">
+        <div class="brand-mark">持</div>
+        <div>
+          <strong>持仓账本</strong>
+          <span>成本与做 T 复盘</span>
+        </div>
+      </div>
+
+      <button class="primary-button wide" id="addStockButton" type="button">
+        <i data-lucide="plus"></i><span>添加股票</span>
+      </button>
+
+      <div class="side-section-head">
+        <span>我的持仓</span>
+        <span class="count-badge" id="stockCount">0</span>
+      </div>
+      <div class="stock-list" id="stockList"></div>
+
+      <div class="side-actions">
+        <button class="ghost-button wide" id="exportButton" type="button">
+          <i data-lucide="download"></i><span>备份数据</span>
+        </button>
+        <button class="ghost-button wide" id="importButton" type="button">
+          <i data-lucide="upload"></i><span>恢复数据</span>
+        </button>
+        <button class="ghost-button wide" id="settingsButton" type="button">
+          <i data-lucide="settings-2"></i><span>费率设置</span>
+        </button>
+        <button class="ghost-button wide" id="logoutButton" type="button">
+          <i data-lucide="log-out"></i><span>退出登录</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-button mobile-only" id="menuButton" type="button" aria-label="打开持仓列表" title="持仓列表">
+          <i data-lucide="menu"></i>
+        </button>
+        <div class="stock-heading" id="stockHeading">
+          <div class="skeleton-title">请选择一只股票</div>
+        </div>
+        <div class="topbar-actions">
+          <span class="save-state" id="saveState"><i data-lucide="database"></i>已连接 NAS 数据库</span>
+          <button class="icon-button" id="deleteStockButton" type="button" aria-label="删除当前股票" title="删除当前股票" disabled>
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
+      </header>
+
+      <div class="content" id="content">
+        <section class="empty-state" id="emptyState">
+          <div class="empty-icon"><i data-lucide="line-chart"></i></div>
+          <h1>从第一笔持仓开始</h1>
+          <p>建立股票后，每次买卖都会自动计算成本变化，做 T 可以先测算再记录。</p>
+          <button class="primary-button" id="emptyAddButton" type="button">
+            <i data-lucide="plus"></i><span>添加第一只股票</span>
+          </button>
+        </section>
+
+        <div id="dashboard" hidden>
+          <section class="metric-grid" aria-label="持仓概览">
+            <article class="metric emphasis">
+              <span>当前摊薄成本</span>
+              <strong id="metricCost">--</strong>
+              <small id="metricCostDelta">等待操作记录</small>
+            </article>
+            <article class="metric">
+              <span>当前持仓</span>
+              <strong id="metricShares">--</strong>
+              <small id="metricPositionValue">成本金额 --</small>
+            </article>
+            <article class="metric">
+              <span>累计做 T 收益</span>
+              <strong id="metricTProfit">--</strong>
+              <small id="metricTCount">0 次完整做 T</small>
+            </article>
+            <article class="metric">
+              <span>累计交易费用</span>
+              <strong id="metricFees">--</strong>
+              <small id="metricTradeCount">0 条操作记录</small>
+            </article>
+          </section>
+
+          <section class="workspace-grid">
+            <div class="trade-panel panel">
+              <div class="panel-head">
+                <div>
+                  <h2>记录操作</h2>
+                  <p>输入后先看成本变化，再决定是否保存</p>
+                </div>
+                <div class="segmented" id="tradeTypeTabs" aria-label="操作类型">
+                  <button class="active buy" data-trade-type="buy" type="button">买入</button>
+                  <button data-trade-type="sell" type="button">卖出</button>
+                </div>
+              </div>
+
+              <form id="tradeForm" class="form-stack">
+                <div class="form-grid two">
+                  <label>
+                    <span>成交价格</span>
+                    <div class="input-affix"><span>¥</span><input id="tradePrice" type="number" min="0" step="0.0001" inputmode="decimal" placeholder="0.0000" required></div>
+                  </label>
+                  <label>
+                    <span>成交股数</span>
+                    <div class="input-affix suffix"><input id="tradeShares" type="number" min="1" step="1" inputmode="numeric" placeholder="100" required><span>股</span></div>
+                  </label>
+                </div>
+                <div class="form-grid two">
+                  <label>
+                    <span>成交时间</span>
+                    <input id="tradeDate" type="datetime-local" required>
+                  </label>
+                  <label>
+                    <span>备注</span>
+                    <input id="tradeNote" type="text" maxlength="80" placeholder="例如：回踩均线加仓">
+                  </label>
+                </div>
+
+                <div class="fee-strip" id="tradeFeeStrip">
+                  <div><span>佣金</span><strong id="tradeCommission">¥0.00</strong></div>
+                  <div><span>过户费</span><strong id="tradeTransfer">¥0.00</strong></div>
+                  <div><span>印花税</span><strong id="tradeStamp">¥0.00</strong></div>
+                  <div><span>费用合计</span><strong id="tradeFees">¥0.00</strong></div>
+                </div>
+
+                <div class="preview-box" id="tradePreview">
+                  <div>
+                    <span>操作后持仓</span>
+                    <strong id="previewShares">--</strong>
+                  </div>
+                  <i data-lucide="arrow-right"></i>
+                  <div>
+                    <span>操作后成本</span>
+                    <strong id="previewCost">--</strong>
+                  </div>
+                  <div class="delta-pill neutral" id="previewDelta">等待输入</div>
+                </div>
+
+                <button class="primary-button wide" id="saveTradeButton" type="submit" disabled>
+                  <i data-lucide="save"></i><span>保存买入记录</span>
+                </button>
+              </form>
+            </div>
+
+            <div class="t-panel panel">
+              <div class="panel-head">
+                <div>
+                  <h2>做 T 测算</h2>
+                  <p>完整计算双边费用与摊薄成本</p>
+                </div>
+                <div class="segmented compact" id="tModeTabs" aria-label="做 T 顺序">
+                  <button class="active" data-t-mode="sell-buy" type="button">先卖后买</button>
+                  <button data-t-mode="buy-sell" type="button">先买后卖</button>
+                </div>
+              </div>
+
+              <form id="tForm" class="form-stack">
+                <div class="form-grid three">
+                  <label>
+                    <span>卖出价</span>
+                    <div class="input-affix"><span>¥</span><input id="tSellPrice" type="number" min="0" step="0.0001" inputmode="decimal" placeholder="0.0000" required></div>
+                  </label>
+                  <label>
+                    <span>买回价</span>
+                    <div class="input-affix"><span>¥</span><input id="tBuyPrice" type="number" min="0" step="0.0001" inputmode="decimal" placeholder="0.0000" required></div>
+                  </label>
+                  <label>
+                    <span>股数</span>
+                    <div class="input-affix suffix"><input id="tShares" type="number" min="1" step="1" inputmode="numeric" placeholder="100"><span>股</span></div>
+                  </label>
+                </div>
+
+                <div class="t-result" id="tResult">
+                  <div class="t-result-main">
+                    <span>预计净收益</span>
+                    <strong id="tProfit">¥0.00</strong>
+                  </div>
+                  <div class="t-result-grid">
+                    <div><span>做 T 后成本</span><strong id="tNewCost">--</strong></div>
+                    <div><span>成本变化</span><strong id="tCostDelta">--</strong></div>
+                    <div><span>双边费用</span><strong id="tFees">¥0.00</strong></div>
+                    <div><span>保本价差</span><strong id="tBreakEven">--</strong></div>
+                  </div>
+                  <p class="result-hint" id="tHint">输入卖出价、买回价和股数开始测算</p>
+                </div>
+
+                <div class="form-grid two t-meta">
+                  <label>
+                    <span>记录时间</span>
+                    <input id="tDate" type="datetime-local" required>
+                  </label>
+                  <label>
+                    <span>复盘备注</span>
+                    <input id="tNote" type="text" maxlength="80" placeholder="例如：冲高回落，分时承压">
+                  </label>
+                </div>
+                <button class="secondary-button wide" id="saveTButton" type="submit" disabled>
+                  <i data-lucide="save"></i><span>保存做 T 记录</span>
+                </button>
+              </form>
+            </div>
+          </section>
+
+          <section class="history-section">
+            <div class="section-head">
+              <div>
+                <h2>操作复盘</h2>
+                <p id="historySummary">按日期查看每次操作后的成本变化</p>
+              </div>
+              <div class="history-tools">
+                <label class="date-filter">
+                  <i data-lucide="calendar-days"></i>
+                  <input id="historyDateFilter" type="date" aria-label="按日期筛选">
+                </label>
+                <button class="icon-button" id="clearDateFilter" type="button" aria-label="清除日期筛选" title="清除日期筛选">
+                  <i data-lucide="x"></i>
+                </button>
+              </div>
+            </div>
+            <div class="history-list" id="historyList"></div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+
+  <dialog id="stockDialog" class="modal">
+    <form method="dialog" id="stockForm">
+      <div class="modal-head">
+        <div><h2>添加股票</h2><p>录入当前真实持仓作为账本起点</p></div>
+        <button class="icon-button dialog-close" type="button" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body form-stack">
+        <div class="form-grid two">
+          <label><span>股票代码</span><input id="stockCode" type="text" maxlength="10" autocomplete="off" placeholder="例如：600519" required></label>
+          <label><span>股票名称</span><input id="stockName" type="text" maxlength="20" autocomplete="off" placeholder="例如：贵州茅台" required></label>
+        </div>
+        <div class="form-grid two">
+          <label><span>当前持仓成本</span><div class="input-affix"><span>¥</span><input id="openingCost" type="number" min="0" step="0.0001" inputmode="decimal" placeholder="0.0000" required></div></label>
+          <label><span>当前持仓股数</span><div class="input-affix suffix"><input id="openingShares" type="number" min="0" step="1" inputmode="numeric" placeholder="0" required><span>股</span></div></label>
+        </div>
+        <label><span>账本起始日期</span><input id="openingDate" type="date" required></label>
+        <div class="info-callout"><i data-lucide="info"></i><span>起始持仓不会计入操作记录，后续每笔交易会从这里连续计算。</span></div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-button dialog-close" type="button">取消</button>
+        <button class="primary-button" id="createStockButton" value="default" type="submit"><i data-lucide="check"></i><span>创建账本</span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settingsDialog" class="modal settings-modal">
+    <form method="dialog" id="settingsForm">
+      <div class="modal-head">
+        <div><h2>交易费率</h2><p>默认沿用旧版页面参数，可按券商实际费率调整</p></div>
+        <button class="icon-button dialog-close" type="button" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body form-stack">
+        <div class="form-grid two">
+          <label><span>佣金率（%）</span><input id="commissionRate" type="number" min="0" step="0.00001" required></label>
+          <label><span>最低佣金（元）</span><input id="minCommission" type="number" min="0" step="0.01" required></label>
+        </div>
+        <div class="form-grid two">
+          <label><span>沪市过户费率（%）</span><input id="transferRate" type="number" min="0" step="0.00001" required></label>
+          <label><span>卖出印花税率（%）</span><input id="stampRate" type="number" min="0" step="0.00001" required></label>
+        </div>
+        <label class="switch-row"><span><strong>仅沪市收取过户费</strong><small>股票代码以 6 开头时计算</small></span><input id="shOnlyTransfer" type="checkbox" role="switch"></label>
+        <div class="info-callout"><i data-lucide="shield-check"></i><span>费率修改后，所有历史操作会按新参数重新计算，原始成交记录不会改变。</span></div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-button" id="resetSettingsButton" value="cancel" type="button">恢复旧版参数</button>
+        <button class="primary-button" id="saveSettingsButton" value="default" type="submit"><i data-lucide="save"></i><span>保存设置</span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <input id="importFileInput" type="file" accept="application/json,.json" hidden>
+  <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+
+  <dialog id="loginDialog" class="modal login-modal">
+    <form method="dialog" id="loginForm">
+      <div class="modal-head">
+        <div><h2>登录持仓账本</h2><p>请输入 NAS 部署时设置的访问密码</p></div>
+      </div>
+      <div class="modal-body form-stack">
+        <label><span>访问密码</span><input id="loginPassword" type="password" autocomplete="current-password" placeholder="请输入访问密码" required></label>
+        <div class="info-callout login-error" id="loginError" hidden><i data-lucide="circle-alert"></i><span></span></div>
+        <div class="info-callout"><i data-lucide="lock-keyhole"></i><span>数据保存在 NAS 上的 PostgreSQL，不会存到当前浏览器。</span></div>
+      </div>
+      <div class="modal-actions">
+        <button class="primary-button" id="loginButton" value="default" type="submit"><i data-lucide="log-in"></i><span>登录</span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

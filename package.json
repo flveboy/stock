@@ -1,0 +1,23 @@
+{
+  "name": "stock-cost-ledger",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch server/index.js",
+    "start": "node server/index.js",
+    "test": "node --test",
+    "check": "node --check server/index.js && node --check js/app.js",
+    "smoke": "node scripts/smoke-api.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "pg": "^8.16.0",
+    "redis": "^5.6.0"
+  }
+}
