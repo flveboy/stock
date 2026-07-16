@@ -107,6 +107,22 @@ docker compose up -d
 
 也可以在飞牛 Docker 的镜像仓库设置中移除或修复 `https://docker.fnnas.com`，恢复后继续使用 `.env.example` 里的官方默认镜像。第三方镜像加速地址只负责代理相同的公开镜像，长期部署建议在网络允许时切回 Docker Hub 官方源。
 
+### 页面有内容但没有样式
+
+`f611d8b` 之前的版本会在 HTTP 内网部署时把 CSS 请求强制升级为 HTTPS，表现为页面文字存在但排版和颜色全部消失。请拉取最新的 `codex/nas-docker` 分支并重新构建应用容器：
+
+```bash
+git pull
+docker compose build --no-cache app
+docker compose up -d app
+```
+
+更新后可以用下面的命令确认安全策略中不再包含 `upgrade-insecure-requests`：
+
+```bash
+curl -I http://NAS-IP:应用端口/
+```
+
 ## 数据保存位置
 
 数据库通过绑定目录保存在项目文件夹中：

@@ -37,6 +37,7 @@ app.use(helmet({
       styleSrc: ["'self'"],
       imgSrc: ["'self'", "data:"],
       connectSrc: ["'self'"],
+      upgradeInsecureRequests: null,
     },
   },
 }));
