@@ -135,6 +135,17 @@ export function buildLedger(stock, operations, settings = DEFAULT_SETTINGS) {
       }
     }
 
+    const automaticAfterCost = shares > 0 ? costAmount / shares : 0;
+    const correctedCost = Number(operation.correctedCost);
+    const corrected = calculation.valid
+      && shares > 0
+      && operation.correctedCost !== null
+      && operation.correctedCost !== undefined
+      && Number.isFinite(correctedCost);
+    if (corrected) costAmount = correctedCost * shares;
+
+    const afterCost = shares > 0 ? costAmount / shares : 0;
+
     return {
       ...operation,
       valid: calculation.valid,
@@ -142,7 +153,11 @@ export function buildLedger(stock, operations, settings = DEFAULT_SETTINGS) {
       beforeShares,
       beforeCost,
       afterShares: shares,
-      afterCost: shares > 0 ? costAmount / shares : 0,
+      automaticAfterCost,
+      corrected,
+      correctionDelta: corrected ? afterCost - automaticAfterCost : 0,
+      costDelta: afterCost - beforeCost,
+      afterCost,
       afterCostAmount: costAmount,
     };
   });

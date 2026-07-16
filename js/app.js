@@ -24,6 +24,10 @@ const state = {
   tradeType: "buy",
   tMode: "sell-buy",
   historyDate: "",
+  historyPage: 1,
+  historyPageSize: 6,
+  correctionOperationId: null,
+  costChart: null,
 };
 
 function selectedStock() {
@@ -132,6 +136,7 @@ function renderStocks() {
   $$(".stock-item").forEach((button) => button.addEventListener("click", () => {
     state.selectedStockId = button.dataset.stockId;
     state.historyDate = "";
+    state.historyPage = 1;
     $("#historyDateFilter").value = "";
     render();
     $("#sidebar").classList.remove("open");
@@ -228,42 +233,147 @@ function operationDetail(operation) {
   return `${price(operation.price)} × ${integer(operation.shares)}`;
 }
 
+function renderCostChart() {
+  const stock = selectedStock();
+  const ledger = selectedLedger();
+  if (!stock || !ledger) return;
+  const entries = ledger.entries.filter((entry) => entry.valid);
+  const empty = $("#chartEmpty");
+  const canvasWrap = $("#chartCanvasWrap");
+
+  if (state.costChart) {
+    state.costChart.destroy();
+    state.costChart = null;
+  }
+
+  if (!entries.length || !window.Chart) {
+    canvasWrap.hidden = true;
+    empty.hidden = false;
+    empty.querySelector("span").textContent = window.Chart
+      ? "保存第一条操作后，这里会显示成本曲线"
+      : "图表组件加载失败，请刷新页面重试";
+    return;
+  }
+
+  canvasWrap.hidden = false;
+  empty.hidden = true;
+  const points = [
+    { label: "起始持仓", date: stock.openingDate, cost: Number(stock.openingCost), corrected: false },
+    ...entries.map((entry) => ({
+      label: operationTitle(entry),
+      date: entry.date,
+      cost: entry.afterCost,
+      corrected: entry.corrected,
+    })),
+  ];
+  const correctedCount = entries.filter((entry) => entry.corrected).length;
+  $("#chartSummary").textContent = `${entries.length} 次有效操作 · ${correctedCount} 个修正点`;
+
+  state.costChart = new window.Chart($("#costChart"), {
+    type: "line",
+    data: {
+      labels: points.map((point) => dateTime(point.date)),
+      datasets: [{
+        data: points.map((point) => point.cost),
+        borderColor: "#0a8f86",
+        backgroundColor: "rgba(10, 143, 134, .08)",
+        borderWidth: 2,
+        fill: true,
+        tension: 0.24,
+        pointRadius: points.map((point) => point.corrected ? 5 : 3),
+        pointHoverRadius: points.map((point) => point.corrected ? 7 : 5),
+        pointBackgroundColor: points.map((point) => point.corrected ? "#c27721" : "#ffffff"),
+        pointBorderColor: points.map((point) => point.corrected ? "#c27721" : "#0a8f86"),
+        pointBorderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: "index" },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          displayColors: false,
+          callbacks: {
+            title: (items) => {
+              const point = points[items[0].dataIndex];
+              return `${point.label} · ${dateTime(point.date)}`;
+            },
+            label: (item) => `每股成本 ${price(item.raw)}${points[item.dataIndex].corrected ? "（已修正）" : ""}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: "#71808b", maxRotation: 0, autoSkip: true, maxTicksLimit: 8, font: { size: 10 } },
+        },
+        y: {
+          border: { display: false },
+          grid: { color: "#edf0f2" },
+          ticks: { color: "#71808b", callback: (value) => `¥${Number(value).toFixed(2)}`, font: { size: 10 } },
+        },
+      },
+    },
+  });
+}
+
 function renderHistory() {
   const ledger = selectedLedger();
   if (!ledger) return;
   const filter = state.historyDate;
-  const entries = ledger.entries.filter((entry) => !filter || String(entry.date).slice(0, 10) === filter);
-  $("#historySummary").textContent = filter ? `${filter} 共 ${entries.length} 条记录` : `共 ${entries.length} 条记录 · 每条都显示操作后的成本`;
+  const entries = ledger.entries
+    .filter((entry) => !filter || String(entry.date).slice(0, 10) === filter)
+    .sort((a, b) => new Date(b.date) - new Date(a.date) || String(b.id).localeCompare(String(a.id)));
+  const totalPages = Math.max(1, Math.ceil(entries.length / state.historyPageSize));
+  state.historyPage = Math.min(Math.max(1, state.historyPage), totalPages);
+  const start = (state.historyPage - 1) * state.historyPageSize;
+  const pageEntries = entries.slice(start, start + state.historyPageSize);
+  $("#historySummary").textContent = filter
+    ? `${filter} 共 ${entries.length} 条记录 · 第 ${state.historyPage} / ${totalPages} 页`
+    : `共 ${entries.length} 条记录 · 每页最多 ${state.historyPageSize} 条`;
   const list = $("#historyList");
+  const pagination = $("#historyPagination");
   if (!entries.length) {
     list.innerHTML = `<div class="history-empty"><i data-lucide="calendar-off"></i><span>${filter ? "这一天没有操作记录" : "还没有操作记录，先在上方保存一笔买卖或做 T"}</span></div>`;
+    pagination.hidden = true;
     refreshIcons();
     return;
   }
 
-  const groups = entries.reduce((map, entry) => {
+  pagination.hidden = totalPages <= 1;
+  $("#historyPageLabel").textContent = `第 ${state.historyPage} / ${totalPages} 页`;
+  $("#historyPrevPage").disabled = state.historyPage <= 1;
+  $("#historyNextPage").disabled = state.historyPage >= totalPages;
+
+  const groups = pageEntries.reduce((map, entry) => {
     const key = String(entry.date).slice(0, 10);
     (map[key] ||= []).push(entry);
     return map;
   }, {});
   list.innerHTML = Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0])).map(([day, dayEntries]) => `
     <div class="history-day"><div class="day-label"><span>${dateOnly(day)}</span><span>${dayEntries.length} 条</span></div>
-    <div class="history-rows">${dayEntries.sort((a, b) => new Date(b.date) - new Date(a.date)).map((entry) => {
+    <div class="history-rows">${dayEntries.map((entry) => {
       const isT = entry.type === "t";
       const calculation = entry.calculation;
-      const delta = calculation.costDelta;
+      const delta = entry.costDelta;
       const detail = !entry.valid
         ? `${operationDetail(entry)} · ${calculation.reason || "记录无法计入当前持仓"}`
         : isT
           ? `${operationDetail(entry)} · 净收益 ${money(calculation.profit)}`
           : `${operationDetail(entry)} · 费用 ${money(calculation.fees.total)}`;
-      return `<article class="history-row ${isT ? "t-row" : ""}">
+      return `<article class="history-row ${isT ? "t-row" : ""} ${entry.corrected ? "corrected-row" : ""}">
         <div class="op-icon ${entry.type}"><i data-lucide="${isT ? "repeat-2" : entry.type === "buy" ? "arrow-down-left" : "arrow-up-right"}"></i></div>
         <div class="op-main"><div class="op-title"><strong>${operationTitle(entry)}</strong><span>${dateTime(entry.date)}</span></div><p>${detail}</p>${entry.note ? `<small>${escapeHtml(entry.note)}</small>` : ""}</div>
-        <div class="op-result"><span>${entry.valid ? "操作后成本" : "未计入成本"}</span><strong>${price(entry.afterCost)}</strong>${entry.valid ? `<small class="${delta <= 0 ? "positive" : "negative"}">${delta <= 0 ? "降低" : "增加"} ${price(Math.abs(delta))}</small>` : `<small class="negative">记录无效</small>`}</div>
-        <button class="icon-button delete-op" data-operation-id="${entry.id}" type="button" aria-label="删除这条记录" title="删除这条记录"><i data-lucide="trash-2"></i></button>
+        <div class="op-result"><span>${entry.valid ? (entry.corrected ? "修正后成本" : "操作后成本") : "未计入成本"}</span><strong>${price(entry.afterCost)}</strong>${entry.valid ? `<small class="${delta <= 0 ? "positive" : "negative"}">${delta <= 0 ? "降低" : "增加"} ${price(Math.abs(delta))}</small>${entry.corrected ? `<small class="corrected-note">自动值 ${price(entry.automaticAfterCost)}</small>` : ""}` : `<small class="negative">记录无效</small>`}</div>
+        <div class="op-actions">
+          ${entry.valid && entry.afterShares > 0 ? `<button class="icon-button correct-cost" data-operation-id="${entry.id}" type="button" aria-label="修正操作后成本" title="修正操作后成本"><i data-lucide="pencil-line"></i></button>` : ""}
+          <button class="icon-button delete-op" data-operation-id="${entry.id}" type="button" aria-label="删除这条记录" title="删除这条记录"><i data-lucide="trash-2"></i></button>
+        </div>
       </article>`;
     }).join("")}</div></div>`).join("");
+  $$(".correct-cost").forEach((button) => button.addEventListener("click", () => openCorrectionDialog(button.dataset.operationId)));
   $$(".delete-op").forEach((button) => button.addEventListener("click", () => deleteOperation(button.dataset.operationId)));
   refreshIcons();
 }
@@ -278,7 +388,11 @@ function render() {
     renderMetrics();
     renderTradePreview();
     renderTSimulation();
+    renderCostChart();
     renderHistory();
+  } else if (state.costChart) {
+    state.costChart.destroy();
+    state.costChart = null;
   }
   refreshIcons();
 }
@@ -318,6 +432,7 @@ async function saveTrade(event) {
   if (!result.valid) return toast(result.reason || "请检查输入", "error");
   await db.putOperation(operation);
   state.operations.push(operation);
+  state.historyPage = 1;
   $("#tradeForm").reset();
   $("#tradeDate").value = localDateTimeValue();
   render();
@@ -337,10 +452,54 @@ async function saveT(event) {
   if (!result.valid) return toast(result.reason || "请检查输入", "error");
   await db.putOperation(operation);
   state.operations.push(operation);
+  state.historyPage = 1;
   $("#tForm").reset();
   $("#tDate").value = localDateTimeValue();
   render();
   toast("做 T 记录已保存，持仓成本已更新");
+}
+
+function openCorrectionDialog(id) {
+  const entry = selectedLedger()?.entries.find((item) => item.id === id);
+  if (!entry || !entry.valid || entry.afterShares <= 0) return;
+  state.correctionOperationId = id;
+  $("#correctionOperationSummary").textContent = `${operationTitle(entry)} · ${dateTime(entry.date)} · 操作后 ${integer(entry.afterShares)}`;
+  $("#automaticCostValue").textContent = price(entry.automaticAfterCost);
+  $("#currentCostValue").textContent = price(entry.afterCost);
+  $("#correctedCostInput").value = Number(entry.afterCost).toFixed(4);
+  $("#removeCorrectionButton").hidden = !entry.corrected;
+  $("#correctionDialog").showModal();
+  window.setTimeout(() => $("#correctedCostInput").select(), 50);
+}
+
+async function saveCorrection(event) {
+  event.preventDefault();
+  const id = state.correctionOperationId;
+  const operation = state.operations.find((item) => item.id === id);
+  const rawValue = $("#correctedCostInput").value.trim();
+  const correctedCost = Number(rawValue);
+  if (!operation || !rawValue || !Number.isFinite(correctedCost)) return toast("请输入有效的修正成本", "error");
+
+  const updated = { ...operation, correctedCost };
+  await db.putOperation(updated);
+  state.operations = state.operations.map((item) => item.id === id ? updated : item);
+  $("#correctionDialog").close();
+  state.correctionOperationId = null;
+  render();
+  toast("成本修正已保存，后续记录已重新计算");
+}
+
+async function removeCorrection() {
+  const id = state.correctionOperationId;
+  const operation = state.operations.find((item) => item.id === id);
+  if (!operation) return;
+  const { correctedCost: _removed, ...updated } = operation;
+  await db.putOperation(updated);
+  state.operations = state.operations.map((item) => item.id === id ? updated : item);
+  $("#correctionDialog").close();
+  state.correctionOperationId = null;
+  render();
+  toast("已取消修正，成本恢复为自动计算值");
 }
 
 async function deleteOperation(id) {
@@ -440,6 +599,8 @@ function bindEvents() {
   $("#stockForm").addEventListener("submit", createStock);
   $("#tradeForm").addEventListener("submit", saveTrade);
   $("#tForm").addEventListener("submit", saveT);
+  $("#correctionForm").addEventListener("submit", saveCorrection);
+  $("#removeCorrectionButton").addEventListener("click", removeCorrection);
   $("#settingsButton").addEventListener("click", showSettingsDialog);
   $("#settingsForm").addEventListener("submit", saveSettings);
   $("#resetSettingsButton").addEventListener("click", resetSettings);
@@ -449,8 +610,10 @@ function bindEvents() {
   $("#importFileInput").addEventListener("change", importData);
   $("#loginForm").addEventListener("submit", login);
   $("#logoutButton").addEventListener("click", logout);
-  $("#historyDateFilter").addEventListener("change", (event) => { state.historyDate = event.target.value; renderHistory(); });
-  $("#clearDateFilter").addEventListener("click", () => { state.historyDate = ""; $("#historyDateFilter").value = ""; renderHistory(); });
+  $("#historyDateFilter").addEventListener("change", (event) => { state.historyDate = event.target.value; state.historyPage = 1; renderHistory(); });
+  $("#clearDateFilter").addEventListener("click", () => { state.historyDate = ""; state.historyPage = 1; $("#historyDateFilter").value = ""; renderHistory(); });
+  $("#historyPrevPage").addEventListener("click", () => { state.historyPage -= 1; renderHistory(); });
+  $("#historyNextPage").addEventListener("click", () => { state.historyPage += 1; renderHistory(); });
   $("#menuButton").addEventListener("click", () => { $("#sidebar").classList.add("open"); $("#drawerBackdrop").hidden = false; });
   $("#drawerBackdrop").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#drawerBackdrop").hidden = true; });
   $$(".dialog-close").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));

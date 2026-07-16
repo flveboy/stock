@@ -21,7 +21,9 @@ test("validates normal trades and complete T trades", () => {
   const tTrade = { id: "op-2", stockId: stock.id, type: "t", sellPrice: 1550, buyPrice: 1500, shares: 100, date: "2026-07-16T14:00:00+08:00" };
   assert.equal(validateOperation(buy), buy);
   assert.equal(validateOperation(tTrade), tTrade);
+  assert.equal(validateOperation({ ...buy, correctedCost: -1.25 }).correctedCost, -1.25);
   assert.throws(() => validateOperation({ ...buy, shares: 0 }), /成交股数无效/);
+  assert.throws(() => validateOperation({ ...buy, correctedCost: "bad" }), /修正成本无效/);
 });
 
 test("validates fee settings and backup structure", () => {

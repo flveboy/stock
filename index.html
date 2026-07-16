@@ -215,6 +215,25 @@
             </div>
           </section>
 
+          <section class="chart-panel panel" aria-labelledby="costChartTitle">
+            <div class="panel-head chart-head">
+              <div>
+                <h2 id="costChartTitle">成本变化</h2>
+                <p id="chartSummary">从起始持仓到每次操作后的摊薄成本</p>
+              </div>
+              <div class="chart-legend" aria-label="图表图例">
+                <span><i class="legend-line"></i>成本曲线</span>
+                <span><i class="legend-dot corrected"></i>手动修正</span>
+              </div>
+            </div>
+            <div class="chart-body">
+              <div class="chart-canvas-wrap" id="chartCanvasWrap">
+                <canvas id="costChart" aria-label="持仓成本变化折线图" role="img"></canvas>
+              </div>
+              <div class="chart-empty" id="chartEmpty" hidden><i data-lucide="chart-no-axes-column-increasing"></i><span>保存第一条操作后，这里会显示成本曲线</span></div>
+            </div>
+          </section>
+
           <section class="history-section">
             <div class="section-head">
               <div>
@@ -232,6 +251,11 @@
               </div>
             </div>
             <div class="history-list" id="historyList"></div>
+            <div class="history-pagination" id="historyPagination" hidden>
+              <button class="icon-button" id="historyPrevPage" type="button" aria-label="上一页" title="上一页"><i data-lucide="chevron-left"></i></button>
+              <span id="historyPageLabel">第 1 / 1 页</span>
+              <button class="icon-button" id="historyNextPage" type="button" aria-label="下一页" title="下一页"><i data-lucide="chevron-right"></i></button>
+            </div>
           </section>
         </div>
       </div>
@@ -290,6 +314,30 @@
     </form>
   </dialog>
 
+  <dialog id="correctionDialog" class="modal correction-modal">
+    <form method="dialog" id="correctionForm">
+      <div class="modal-head">
+        <div><h2>修正操作后成本</h2><p id="correctionOperationSummary">将券商显示成本作为后续计算起点</p></div>
+        <button class="icon-button dialog-close" type="button" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body form-stack">
+        <div class="correction-comparison">
+          <div><span>自动计算</span><strong id="automaticCostValue">--</strong></div>
+          <i data-lucide="arrow-right"></i>
+          <div><span>当前采用</span><strong id="currentCostValue">--</strong></div>
+        </div>
+        <label><span>修正后的每股成本</span><div class="input-affix"><span>¥</span><input id="correctedCostInput" type="number" step="0.0001" inputmode="decimal" required></div></label>
+        <div class="info-callout"><i data-lucide="git-commit-horizontal"></i><span>修正只改变该条记录之后的成本基准，不会改变成交价格、股数和手续费。</span></div>
+      </div>
+      <div class="modal-actions split-actions">
+        <button class="ghost-button danger-text" id="removeCorrectionButton" value="cancel" type="button" hidden>取消修正</button>
+        <span class="action-spacer"></span>
+        <button class="ghost-button dialog-close" value="cancel" type="button">取消</button>
+        <button class="primary-button" value="default" type="submit"><i data-lucide="save"></i><span>保存修正</span></button>
+      </div>
+    </form>
+  </dialog>
+
   <input id="importFileInput" type="file" accept="application/json,.json" hidden>
   <div class="toast-region" id="toastRegion" aria-live="polite"></div>
 
@@ -310,6 +358,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="./vendor/chart.umd.js"></script>
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>

@@ -30,6 +30,11 @@ export function validateOperation(operation) {
   } else if (!(toNumber(operation.price) > 0)) {
     invalid("成交价格无效");
   }
+  if (operation.correctedCost !== undefined
+    && operation.correctedCost !== null
+    && !Number.isFinite(toNumber(operation.correctedCost))) {
+    invalid("修正成本无效");
+  }
   return operation;
 }
 

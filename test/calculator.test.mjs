@@ -57,3 +57,27 @@ test("ledger keeps an invalid oversell visible without changing the position", (
   assert.equal(ledger.shares, 100);
   assert.equal(ledger.cost, 10);
 });
+
+test("cost correction overrides one entry and becomes the basis for later trades", () => {
+  const stock = { code: "000001", openingShares: 1000, openingCost: 10 };
+  const ledger = buildLedger(stock, [
+    { id: "buy", type: "buy", price: 8, shares: 100, correctedCost: 9.5, date: "2026-01-01T10:00:00Z" },
+    { id: "sell", type: "sell", price: 12, shares: 100, date: "2026-01-02T10:00:00Z" },
+  ], DEFAULT_SETTINGS);
+
+  assert.equal(ledger.entries[0].corrected, true);
+  assert.equal(ledger.entries[0].afterCost, 9.5);
+  assert.notEqual(ledger.entries[0].automaticAfterCost, 9.5);
+  assert.equal(ledger.entries[1].beforeCost, 9.5);
+  assert.ok(Math.abs(ledger.cost - 9.2556) < 1e-9);
+});
+
+test("invalid operations do not apply a stored cost correction", () => {
+  const stock = { code: "000001", openingShares: 100, openingCost: 10 };
+  const ledger = buildLedger(stock, [
+    { id: "oversell", type: "sell", price: 12, shares: 200, correctedCost: 1, date: "2026-01-01T10:00:00Z" },
+  ], DEFAULT_SETTINGS);
+
+  assert.equal(ledger.entries[0].corrected, false);
+  assert.equal(ledger.cost, 10);
+});
