@@ -1,9 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      args:
-        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+    image: ${APP_IMAGE:-ghcr.io/flveboy/stock:nas-docker}
     restart: unless-stopped
     ports:
       - "${APP_PORT:-3000}:3000"

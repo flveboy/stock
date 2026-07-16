@@ -1,0 +1,7 @@
+services:
+  app:
+    image: stock-ledger:local
+    build:
+      context: .
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}

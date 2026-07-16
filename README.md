@@ -63,8 +63,11 @@ POSTGRES_PASSWORD=数据库高强度密码
 在飞牛 Docker 的 Compose 页面导入 `compose.yaml`，或通过终端运行：
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
+
+飞牛只需要拉取预构建镜像，不需要安装 Node.js，也不要在飞牛上运行 `docker compose build`。应用镜像由 GitHub Actions 自动构建，同时支持常见的 x86_64 和 ARM64 NAS。
 
 查看状态：
 
@@ -81,27 +84,25 @@ http://NAS-IP:3000
 
 如果 `3000` 端口被占用，可在 `.env` 中修改 `APP_PORT`。
 
-### 飞牛镜像代理返回 401
+### PostgreSQL 或 Redis 镜像代理返回 401
 
-如果构建时出现类似错误：
+如果拉取 PostgreSQL 或 Redis 时出现类似错误：
 
 ```text
-docker.fnnas.com/v2/library/node/manifests/22-alpine: 401 Unauthorized
+docker.fnnas.com/v2/library/postgres/manifests/17-alpine: 401 Unauthorized
 ```
 
-这是飞牛内置 Docker Hub 代理失效，不是项目镜像标签错误。先在 `.env` 中覆盖三个镜像地址，绕过 `docker.fnnas.com`：
+这是飞牛内置 Docker Hub 代理失效，不是项目镜像标签错误。先在 `.env` 中覆盖 PostgreSQL 和 Redis 镜像地址，绕过 `docker.fnnas.com`：
 
 ```dotenv
-NODE_IMAGE=docker.1ms.run/library/node:22-alpine
 POSTGRES_IMAGE=docker.1ms.run/library/postgres:17-alpine
 REDIS_IMAGE=docker.1ms.run/library/redis:7.4-alpine
 ```
 
-然后重新拉取并构建：
+然后重新拉取并启动：
 
 ```bash
 docker compose pull postgres redis
-docker compose build --no-cache app
 docker compose up -d
 ```
 
@@ -109,11 +110,11 @@ docker compose up -d
 
 ### 页面有内容但没有样式
 
-`f611d8b` 之前的版本会在 HTTP 内网部署时把 CSS 请求强制升级为 HTTPS，表现为页面文字存在但排版和颜色全部消失。请拉取最新的 `codex/nas-docker` 分支并重新构建应用容器：
+`f611d8b` 之前的版本会在 HTTP 内网部署时把 CSS 请求强制升级为 HTTPS，表现为页面文字存在但排版和颜色全部消失。请拉取最新的 `codex/nas-docker` 分支并更新应用镜像：
 
 ```bash
 git pull
-docker compose build --no-cache app
+docker compose pull app
 docker compose up -d app
 ```
 
@@ -186,6 +187,13 @@ npm run dev
 npm test
 npm run check
 docker compose config
+```
+
+如需在本机自行构建完整 Compose 应用镜像，额外加载开发构建配置：
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml build app
+docker compose -f compose.yaml -f compose.build.yaml up -d
 ```
 
 ## 成本计算口径
