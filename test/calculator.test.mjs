@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SETTINGS, calculateFees, calculateTradePreview, calculateTSimulation, buildLedger } from "../js/calculator.js";
+import { DEFAULT_SETTINGS, calculateFees, calculateTradePreview, calculateTSimulation, buildLedger, tradingDateKey } from "../js/calculator.js";
 
 test("uses legacy fee defaults and Shanghai transfer fee", () => {
   const buy = calculateFees({ type: "buy", price: 10, shares: 100, stockCode: "600000" });
@@ -80,4 +80,59 @@ test("invalid operations do not apply a stored cost correction", () => {
 
   assert.equal(ledger.entries[0].corrected, false);
   assert.equal(ledger.cost, 10);
+});
+
+test("same-day real sell and buy are matched as an actual T trade", () => {
+  const stock = { code: "000001", openingShares: 1000, openingCost: 10 };
+  const ledger = buildLedger(stock, [
+    { id: "sell", type: "sell", price: 12, shares: 100, date: "2026-07-17T01:35:00Z" },
+    { id: "buy", type: "buy", price: 11, shares: 100, date: "2026-07-17T06:45:00Z" },
+  ], DEFAULT_SETTINGS);
+
+  assert.equal(ledger.tCount, 1);
+  assert.equal(ledger.tSummaries[0].shares, 100);
+  assert.equal(ledger.tSummaries[0].mode, "sell-buy");
+  assert.equal(ledger.tSummaries[0].completionEntryId, "buy");
+  assert.ok(Math.abs(ledger.totalTProfit - 89.4) < 1e-9);
+  assert.ok(Math.abs(ledger.cost - 9.9106) < 1e-9);
+});
+
+test("real trades on different Shanghai trading days are not matched as T", () => {
+  const stock = { code: "000001", openingShares: 1000, openingCost: 10 };
+  const ledger = buildLedger(stock, [
+    { id: "sell", type: "sell", price: 12, shares: 100, date: "2026-07-17T06:45:00Z" },
+    { id: "buy", type: "buy", price: 11, shares: 100, date: "2026-07-18T01:35:00Z" },
+  ], DEFAULT_SETTINGS);
+
+  assert.equal(ledger.tCount, 0);
+  assert.equal(ledger.totalTProfit, 0);
+});
+
+test("actual T matching allocates fees and matches only the shared quantity", () => {
+  const stock = { code: "000001", openingShares: 1000, openingCost: 10 };
+  const ledger = buildLedger(stock, [
+    { id: "buy", type: "buy", price: 10, shares: 200, date: "2026-07-17T01:35:00Z" },
+    { id: "sell", type: "sell", price: 11, shares: 100, date: "2026-07-17T06:45:00Z" },
+  ], DEFAULT_SETTINGS);
+
+  assert.equal(ledger.tSummaries[0].shares, 100);
+  assert.equal(ledger.tMatches.length, 1);
+  assert.ok(Math.abs(ledger.tMatches[0].fees - 8.05) < 1e-9);
+});
+
+test("legacy saved T simulations no longer change holdings or actual T totals", () => {
+  const stock = { code: "000001", openingShares: 1000, openingCost: 10 };
+  const ledger = buildLedger(stock, [
+    { id: "old-t", type: "t", sellPrice: 12, buyPrice: 11, shares: 100, date: "2026-07-17T06:45:00Z" },
+  ], DEFAULT_SETTINGS);
+
+  assert.equal(ledger.cost, 10);
+  assert.equal(ledger.totalFees, 0);
+  assert.equal(ledger.tCount, 0);
+  assert.equal(ledger.tradeEntries.length, 0);
+  assert.equal(ledger.simulationEntries.length, 1);
+});
+
+test("trading day keys use Shanghai time around UTC midnight", () => {
+  assert.equal(tradingDateKey("2026-07-16T16:30:00Z"), "2026-07-17");
 });

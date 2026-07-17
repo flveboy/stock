@@ -65,7 +65,7 @@
         <section class="empty-state" id="emptyState">
           <div class="empty-icon"><i data-lucide="line-chart"></i></div>
           <h1>从第一笔持仓开始</h1>
-          <p>建立股票后，每次买卖都会自动计算成本变化，做 T 可以先测算再记录。</p>
+          <p>建立股票后，每次真实买卖都会自动计算成本变化，同日双向成交会自动识别为做 T。</p>
           <button class="primary-button" id="emptyAddButton" type="button">
             <i data-lucide="plus"></i><span>添加第一只股票</span>
           </button>
@@ -86,7 +86,7 @@
             <article class="metric">
               <span>累计做 T 收益</span>
               <strong id="metricTProfit">--</strong>
-              <small id="metricTCount">0 次完整做 T</small>
+              <small id="metricTCount">0 个交易日完成 T</small>
             </article>
             <article class="metric">
               <span>累计交易费用</span>
@@ -95,12 +95,17 @@
             </article>
           </section>
 
-          <section class="workspace-grid">
-            <div class="trade-panel panel">
+          <section class="workspace-grid" aria-label="交易操作区">
+            <div class="workspace-tabs segmented" role="tablist" aria-label="操作视图">
+              <button class="active" data-workspace-view="trade" type="button" role="tab" aria-selected="true"><i data-lucide="list-plus"></i><span>记录交易</span></button>
+              <button data-workspace-view="simulation" type="button" role="tab" aria-selected="false"><i data-lucide="calculator"></i><span>做 T 测算</span></button>
+            </div>
+
+            <div class="trade-panel panel" data-workspace-panel="trade">
               <div class="panel-head">
                 <div>
-                  <h2>记录操作</h2>
-                  <p>输入后先看成本变化，再决定是否保存</p>
+                  <h2>记录真实成交</h2>
+                  <p>只保存实际买入卖出，同日双向成交自动识别做 T</p>
                 </div>
                 <div class="segmented" id="tradeTypeTabs" aria-label="操作类型">
                   <button class="active buy" data-trade-type="buy" type="button">买入</button>
@@ -156,16 +161,13 @@
               </form>
             </div>
 
-            <div class="t-panel panel">
+            <div class="t-panel panel" data-workspace-panel="simulation" hidden>
               <div class="panel-head">
                 <div>
                   <h2>做 T 测算</h2>
-                  <p>完整计算双边费用与摊薄成本</p>
+                  <p>输入计划价格，结果不会写入操作记录</p>
                 </div>
-                <div class="segmented compact" id="tModeTabs" aria-label="做 T 顺序">
-                  <button class="active" data-t-mode="sell-buy" type="button">先卖后买</button>
-                  <button data-t-mode="buy-sell" type="button">先买后卖</button>
-                </div>
+                <span class="panel-status"><i data-lucide="eye"></i>仅测算</span>
               </div>
 
               <form id="tForm" class="form-stack">
@@ -198,19 +200,10 @@
                   <p class="result-hint" id="tHint">输入卖出价、买回价和股数开始测算</p>
                 </div>
 
-                <div class="form-grid two t-meta">
-                  <label>
-                    <span>记录时间</span>
-                    <input id="tDate" type="datetime-local" required>
-                  </label>
-                  <label>
-                    <span>复盘备注</span>
-                    <input id="tNote" type="text" maxlength="80" placeholder="例如：冲高回落，分时承压">
-                  </label>
+                <div class="legacy-simulation" id="legacySimulationNotice" hidden>
+                  <div><i data-lucide="archive"></i><span id="legacySimulationText"></span></div>
+                  <button class="ghost-button danger-text" id="clearLegacySimulations" type="button"><i data-lucide="trash-2"></i><span>清理旧测算</span></button>
                 </div>
-                <button class="secondary-button wide" id="saveTButton" type="submit" disabled>
-                  <i data-lucide="save"></i><span>保存做 T 记录</span>
-                </button>
               </form>
             </div>
           </section>
@@ -223,7 +216,8 @@
               </div>
               <div class="chart-legend" aria-label="图表图例">
                 <span><i class="legend-line"></i>成本曲线</span>
-                <span><i class="legend-dot corrected"></i>手动修正</span>
+                <span><i class="legend-diamond"></i>实际做 T</span>
+                <span><i class="legend-dot corrected"></i>成本修正</span>
               </div>
             </div>
             <div class="chart-body">
@@ -234,7 +228,7 @@
             </div>
           </section>
 
-          <section class="history-section">
+          <section class="history-section panel">
             <div class="section-head">
               <div>
                 <h2>操作复盘</h2>

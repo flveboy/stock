@@ -7,6 +7,16 @@ export const DEFAULT_SETTINGS = Object.freeze({
 });
 
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const shanghaiDayFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+export function tradingDateKey(value) {
+  return shanghaiDayFormatter.format(new Date(value));
+}
 
 export function calculateFees({ type, price, shares, stockCode = "" }, settings = DEFAULT_SETTINGS) {
   const tradePrice = number(price);
@@ -91,12 +101,98 @@ export function calculateTSimulation(position, tTrade, stockCode, settings = DEF
   };
 }
 
+export function matchActualTTrades(entries) {
+  const tradesByDay = new Map();
+  entries
+    .filter((entry) => entry.valid && (entry.type === "buy" || entry.type === "sell"))
+    .forEach((entry) => {
+      const day = tradingDateKey(entry.date);
+      if (!tradesByDay.has(day)) tradesByDay.set(day, []);
+      tradesByDay.get(day).push(entry);
+    });
+
+  const matches = [];
+  for (const [day, dayTrades] of tradesByDay) {
+    const lots = (type) => dayTrades
+      .filter((entry) => entry.type === type)
+      .sort((a, b) => new Date(a.date) - new Date(b.date) || String(a.id).localeCompare(String(b.id)))
+      .map((entry) => ({ entry, remaining: number(entry.shares) }));
+    const buys = lots("buy");
+    const sells = lots("sell");
+    let buyIndex = 0;
+    let sellIndex = 0;
+
+    while (buyIndex < buys.length && sellIndex < sells.length) {
+      const buyLot = buys[buyIndex];
+      const sellLot = sells[sellIndex];
+      const shares = Math.min(buyLot.remaining, sellLot.remaining);
+      const buyFeesPerShare = number(buyLot.entry.calculation?.fees?.total) / number(buyLot.entry.shares);
+      const sellFeesPerShare = number(sellLot.entry.calculation?.fees?.total) / number(sellLot.entry.shares);
+      const buyOutflow = (number(buyLot.entry.price) + buyFeesPerShare) * shares;
+      const sellNet = (number(sellLot.entry.price) - sellFeesPerShare) * shares;
+      const buyTime = new Date(buyLot.entry.date).getTime();
+      const sellTime = new Date(sellLot.entry.date).getTime();
+      const completionEntry = buyTime >= sellTime ? buyLot.entry : sellLot.entry;
+
+      matches.push({
+        id: `${day}:${buyLot.entry.id}:${sellLot.entry.id}`,
+        day,
+        shares,
+        buyOperationId: buyLot.entry.id,
+        sellOperationId: sellLot.entry.id,
+        buyPrice: number(buyLot.entry.price),
+        sellPrice: number(sellLot.entry.price),
+        buyOutflow,
+        sellNet,
+        fees: (buyFeesPerShare + sellFeesPerShare) * shares,
+        profit: sellNet - buyOutflow,
+        mode: buyTime <= sellTime ? "buy-sell" : "sell-buy",
+        completionEntryId: completionEntry.id,
+        completionDate: completionEntry.date,
+      });
+
+      buyLot.remaining -= shares;
+      sellLot.remaining -= shares;
+      if (buyLot.remaining <= 0) buyIndex += 1;
+      if (sellLot.remaining <= 0) sellIndex += 1;
+    }
+  }
+
+  const summaries = [...matches.reduce((map, match) => {
+    const summary = map.get(match.day) || {
+      day: match.day,
+      shares: 0,
+      profit: 0,
+      fees: 0,
+      pairCount: 0,
+      modes: new Set(),
+      completionDate: match.completionDate,
+      completionEntryId: match.completionEntryId,
+    };
+    summary.shares += match.shares;
+    summary.profit += match.profit;
+    summary.fees += match.fees;
+    summary.pairCount += 1;
+    summary.modes.add(match.mode);
+    if (new Date(match.completionDate) >= new Date(summary.completionDate)) {
+      summary.completionDate = match.completionDate;
+      summary.completionEntryId = match.completionEntryId;
+    }
+    map.set(match.day, summary);
+    return map;
+  }, new Map()).values()].map((summary) => ({
+    ...summary,
+    mode: summary.modes.size === 1 ? [...summary.modes][0] : "mixed",
+    modes: undefined,
+  }));
+
+  return { matches, summaries };
+}
+
 export function buildLedger(stock, operations, settings = DEFAULT_SETTINGS) {
   let shares = number(stock.openingShares);
   let costAmount = shares * number(stock.openingCost);
   let totalFees = 0;
-  let totalTProfit = 0;
-  let tCount = 0;
 
   const sorted = [...operations].sort((a, b) => {
     const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
@@ -108,19 +204,14 @@ export function buildLedger(stock, operations, settings = DEFAULT_SETTINGS) {
     const beforeCost = shares > 0 ? costAmount / shares : 0;
     let calculation;
 
-    if (operation.type === "t") {
+    const simulation = operation.type === "t";
+    if (simulation) {
       calculation = calculateTSimulation(
         { shares, costAmount },
         operation,
         stock.code,
         settings,
       );
-      if (calculation.valid) {
-        costAmount = calculation.newCostAmount;
-        totalFees += calculation.fees;
-        totalTProfit += calculation.profit;
-        tCount += 1;
-      }
     } else {
       calculation = calculateTradePreview(
         { shares, costAmount },
@@ -137,7 +228,8 @@ export function buildLedger(stock, operations, settings = DEFAULT_SETTINGS) {
 
     const automaticAfterCost = shares > 0 ? costAmount / shares : 0;
     const correctedCost = Number(operation.correctedCost);
-    const corrected = calculation.valid
+    const corrected = !simulation
+      && calculation.valid
       && shares > 0
       && operation.correctedCost !== null
       && operation.correctedCost !== undefined
@@ -149,6 +241,7 @@ export function buildLedger(stock, operations, settings = DEFAULT_SETTINGS) {
     return {
       ...operation,
       valid: calculation.valid,
+      simulation,
       calculation,
       beforeShares,
       beforeCost,
@@ -162,13 +255,21 @@ export function buildLedger(stock, operations, settings = DEFAULT_SETTINGS) {
     };
   });
 
+  const tradeEntries = entries.filter((entry) => !entry.simulation);
+  const simulationEntries = entries.filter((entry) => entry.simulation);
+  const tMatching = matchActualTTrades(tradeEntries);
+
   return {
     shares,
     costAmount,
     cost: shares > 0 ? costAmount / shares : 0,
     totalFees,
-    totalTProfit,
-    tCount,
+    totalTProfit: tMatching.summaries.reduce((sum, summary) => sum + summary.profit, 0),
+    tCount: tMatching.summaries.length,
+    tMatches: tMatching.matches,
+    tSummaries: tMatching.summaries,
+    tradeEntries,
+    simulationEntries,
     entries,
   };
 }

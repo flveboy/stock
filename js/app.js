@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, buildLedger, calculateFees, calculateTradePreview, calculateTSimulation } from "./calculator.js";
+import { DEFAULT_SETTINGS, buildLedger, calculateFees, calculateTradePreview, calculateTSimulation, tradingDateKey } from "./calculator.js";
 import { auth, db } from "./db.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -22,7 +22,7 @@ const state = {
   settings: { ...DEFAULT_SETTINGS },
   selectedStockId: null,
   tradeType: "buy",
-  tMode: "sell-buy",
+  workspaceView: "trade",
   historyDate: "",
   historyPage: 1,
   historyPageSize: 6,
@@ -112,7 +112,6 @@ async function logout() {
 
 function setFormDefaults() {
   $("#tradeDate").value = localDateTimeValue();
-  $("#tDate").value = localDateTimeValue();
   $("#openingDate").value = localDateValue();
 }
 
@@ -168,9 +167,9 @@ function renderMetrics() {
   $("#metricPositionValue").textContent = `成本金额 ${money(ledger.costAmount)}`;
   $("#metricTProfit").textContent = money(ledger.totalTProfit);
   $("#metricTProfit").className = ledger.totalTProfit >= 0 ? "positive" : "negative";
-  $("#metricTCount").textContent = `${ledger.tCount} 次完整做 T`;
+  $("#metricTCount").textContent = `${ledger.tCount} 个交易日完成 T`;
   $("#metricFees").textContent = money(ledger.totalFees);
-  $("#metricTradeCount").textContent = `${ledger.entries.length} 条操作记录`;
+  $("#metricTradeCount").textContent = `${ledger.tradeEntries.length} 条真实交易`;
 }
 
 function renderTradePreview() {
@@ -218,11 +217,15 @@ function renderTSimulation() {
   $("#tFees").textContent = money(result.fees);
   $("#tBreakEven").textContent = hasInput ? price(result.breakEvenSpread) : "--";
   $("#tHint").textContent = !hasInput ? "输入卖出价、买回价和股数开始测算" : (!result.valid ? result.reason : `卖出净收入 ${money(result.sellNet)} · 买回支出 ${money(result.buyOutflow)}`);
-  $("#saveTButton").disabled = !result.valid;
+  const legacyCount = ledger.simulationEntries.length;
+  $("#legacySimulationNotice").hidden = legacyCount === 0;
+  $("#legacySimulationText").textContent = legacyCount
+    ? `有 ${legacyCount} 条旧版测算记录，已停止计入成本和复盘。`
+    : "";
 }
 
 function operationTitle(operation) {
-  if (operation.type === "t") return "做 T";
+  if (operation.type === "t") return "历史测算";
   return operation.type === "buy" ? "买入" : "卖出";
 }
 
@@ -237,7 +240,7 @@ function renderCostChart() {
   const stock = selectedStock();
   const ledger = selectedLedger();
   if (!stock || !ledger) return;
-  const entries = ledger.entries.filter((entry) => entry.valid);
+  const entries = ledger.tradeEntries.filter((entry) => entry.valid);
   const empty = $("#chartEmpty");
   const canvasWrap = $("#chartCanvasWrap");
 
@@ -258,56 +261,89 @@ function renderCostChart() {
   canvasWrap.hidden = false;
   empty.hidden = true;
   const points = [
-    { label: "起始持仓", date: stock.openingDate, cost: Number(stock.openingCost), corrected: false },
+    { x: new Date(stock.openingDate).getTime(), y: Number(stock.openingCost), label: "起始持仓", date: stock.openingDate },
     ...entries.map((entry) => ({
+      x: new Date(entry.date).getTime(),
+      y: entry.afterCost,
       label: operationTitle(entry),
       date: entry.date,
-      cost: entry.afterCost,
-      corrected: entry.corrected,
+      entryId: entry.id,
     })),
   ];
-  const correctedCount = entries.filter((entry) => entry.corrected).length;
-  $("#chartSummary").textContent = `${entries.length} 次有效操作 · ${correctedCount} 个修正点`;
+  const correctedPoints = entries.filter((entry) => entry.corrected).map((entry) => ({
+    x: new Date(entry.date).getTime(),
+    y: entry.afterCost,
+    entry,
+  }));
+  const tPoints = ledger.tSummaries.map((summary) => {
+    const entry = entries.find((item) => item.id === summary.completionEntryId);
+    return entry ? { x: new Date(summary.completionDate).getTime(), y: entry.afterCost, summary } : null;
+  }).filter(Boolean);
+  $("#chartSummary").textContent = `${entries.length} 次真实操作 · ${ledger.tSummaries.length} 个交易日完成 T`;
 
   state.costChart = new window.Chart($("#costChart"), {
     type: "line",
     data: {
-      labels: points.map((point) => dateTime(point.date)),
       datasets: [{
-        data: points.map((point) => point.cost),
+        kind: "cost",
+        data: points,
         borderColor: "#0a8f86",
         backgroundColor: "rgba(10, 143, 134, .08)",
         borderWidth: 2,
         fill: true,
         tension: 0.24,
-        pointRadius: points.map((point) => point.corrected ? 5 : 3),
-        pointHoverRadius: points.map((point) => point.corrected ? 7 : 5),
-        pointBackgroundColor: points.map((point) => point.corrected ? "#c27721" : "#ffffff"),
-        pointBorderColor: points.map((point) => point.corrected ? "#c27721" : "#0a8f86"),
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointBackgroundColor: "#ffffff",
+        pointBorderColor: "#0a8f86",
+        pointBorderWidth: 2,
+      }, {
+        type: "scatter",
+        kind: "actual-t",
+        data: tPoints,
+        pointStyle: "rectRot",
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        pointBackgroundColor: "#315b7d",
+        pointBorderColor: "#ffffff",
+        pointBorderWidth: 2,
+      }, {
+        type: "scatter",
+        kind: "correction",
+        data: correctedPoints,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointBackgroundColor: "#c27721",
+        pointBorderColor: "#ffffff",
         pointBorderWidth: 2,
       }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { intersect: false, mode: "index" },
+      interaction: { intersect: false, mode: "nearest" },
       plugins: {
         legend: { display: false },
         tooltip: {
           displayColors: false,
           callbacks: {
-            title: (items) => {
-              const point = points[items[0].dataIndex];
-              return `${point.label} · ${dateTime(point.date)}`;
+            title: (items) => dateTime(items[0].parsed.x),
+            label: (item) => {
+              if (item.dataset.kind === "actual-t") {
+                const summary = item.raw.summary;
+                return `实际做 T ${integer(summary.shares)} · 净收益 ${money(summary.profit)}`;
+              }
+              if (item.dataset.kind === "correction") return `成本修正为 ${price(item.parsed.y)}`;
+              return `${item.raw.label}后成本 ${price(item.parsed.y)}`;
             },
-            label: (item) => `每股成本 ${price(item.raw)}${points[item.dataIndex].corrected ? "（已修正）" : ""}`,
           },
         },
       },
       scales: {
         x: {
+          type: "linear",
           grid: { display: false },
-          ticks: { color: "#71808b", maxRotation: 0, autoSkip: true, maxTicksLimit: 8, font: { size: 10 } },
+          ticks: { color: "#71808b", maxRotation: 0, autoSkip: true, maxTicksLimit: 6, callback: (value) => dateTime(Number(value)), font: { size: 10 } },
         },
         y: {
           border: { display: false },
@@ -323,20 +359,20 @@ function renderHistory() {
   const ledger = selectedLedger();
   if (!ledger) return;
   const filter = state.historyDate;
-  const entries = ledger.entries
-    .filter((entry) => !filter || String(entry.date).slice(0, 10) === filter)
+  const entries = ledger.tradeEntries
+    .filter((entry) => !filter || tradingDateKey(entry.date) === filter)
     .sort((a, b) => new Date(b.date) - new Date(a.date) || String(b.id).localeCompare(String(a.id)));
   const totalPages = Math.max(1, Math.ceil(entries.length / state.historyPageSize));
   state.historyPage = Math.min(Math.max(1, state.historyPage), totalPages);
   const start = (state.historyPage - 1) * state.historyPageSize;
   const pageEntries = entries.slice(start, start + state.historyPageSize);
   $("#historySummary").textContent = filter
-    ? `${filter} 共 ${entries.length} 条记录 · 第 ${state.historyPage} / ${totalPages} 页`
-    : `共 ${entries.length} 条记录 · 每页最多 ${state.historyPageSize} 条`;
+    ? `${filter} 共 ${entries.length} 笔真实买卖 · 第 ${state.historyPage} / ${totalPages} 页`
+    : `共 ${entries.length} 笔真实买卖 · 自动识别 ${ledger.tCount} 个做 T 交易日`;
   const list = $("#historyList");
   const pagination = $("#historyPagination");
   if (!entries.length) {
-    list.innerHTML = `<div class="history-empty"><i data-lucide="calendar-off"></i><span>${filter ? "这一天没有操作记录" : "还没有操作记录，先在上方保存一笔买卖或做 T"}</span></div>`;
+    list.innerHTML = `<div class="history-empty"><i data-lucide="calendar-off"></i><span>${filter ? "这一天没有真实买卖记录" : "还没有操作记录，先保存一笔买入或卖出"}</span></div>`;
     pagination.hidden = true;
     refreshIcons();
     return;
@@ -348,23 +384,30 @@ function renderHistory() {
   $("#historyNextPage").disabled = state.historyPage >= totalPages;
 
   const groups = pageEntries.reduce((map, entry) => {
-    const key = String(entry.date).slice(0, 10);
+    const key = tradingDateKey(entry.date);
     (map[key] ||= []).push(entry);
     return map;
   }, {});
+  const tSummaryByDay = new Map(ledger.tSummaries.map((summary) => [summary.day, summary]));
   list.innerHTML = Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0])).map(([day, dayEntries]) => `
-    <div class="history-day"><div class="day-label"><span>${dateOnly(day)}</span><span>${dayEntries.length} 条</span></div>
+    <div class="history-day"><div class="day-label"><span>${dateOnly(`${day}T00:00:00+08:00`)}</span><span>${dayEntries.length} 笔</span></div>
+    ${tSummaryByDay.has(day) ? (() => {
+      const summary = tSummaryByDay.get(day);
+      const mode = summary.mode === "sell-buy" ? "先卖后买" : summary.mode === "buy-sell" ? "先买后卖" : "多笔双向撮合";
+      return `<div class="t-day-summary">
+        <div class="t-summary-icon"><i data-lucide="repeat-2"></i></div>
+        <div><strong>实际做 T · ${mode}</strong><span>自动匹配 ${integer(summary.shares)} · ${summary.pairCount} 组买卖</span></div>
+        <div class="t-summary-profit"><span>扣费后收益</span><strong class="${summary.profit >= 0 ? "positive" : "negative"}">${money(summary.profit)}</strong></div>
+      </div>`;
+    })() : ""}
     <div class="history-rows">${dayEntries.map((entry) => {
-      const isT = entry.type === "t";
       const calculation = entry.calculation;
       const delta = entry.costDelta;
       const detail = !entry.valid
         ? `${operationDetail(entry)} · ${calculation.reason || "记录无法计入当前持仓"}`
-        : isT
-          ? `${operationDetail(entry)} · 净收益 ${money(calculation.profit)}`
-          : `${operationDetail(entry)} · 费用 ${money(calculation.fees.total)}`;
-      return `<article class="history-row ${isT ? "t-row" : ""} ${entry.corrected ? "corrected-row" : ""}">
-        <div class="op-icon ${entry.type}"><i data-lucide="${isT ? "repeat-2" : entry.type === "buy" ? "arrow-down-left" : "arrow-up-right"}"></i></div>
+        : `${operationDetail(entry)} · 费用 ${money(calculation.fees.total)}`;
+      return `<article class="history-row ${entry.corrected ? "corrected-row" : ""}">
+        <div class="op-icon ${entry.type}"><i data-lucide="${entry.type === "buy" ? "arrow-down-left" : "arrow-up-right"}"></i></div>
         <div class="op-main"><div class="op-title"><strong>${operationTitle(entry)}</strong><span>${dateTime(entry.date)}</span></div><p>${detail}</p>${entry.note ? `<small>${escapeHtml(entry.note)}</small>` : ""}</div>
         <div class="op-result"><span>${entry.valid ? (entry.corrected ? "修正后成本" : "操作后成本") : "未计入成本"}</span><strong>${price(entry.afterCost)}</strong>${entry.valid ? `<small class="${delta <= 0 ? "positive" : "negative"}">${delta <= 0 ? "降低" : "增加"} ${price(Math.abs(delta))}</small>${entry.corrected ? `<small class="corrected-note">自动值 ${price(entry.automaticAfterCost)}</small>` : ""}` : `<small class="negative">记录无效</small>`}</div>
         <div class="op-actions">
@@ -376,6 +419,17 @@ function renderHistory() {
   $$(".correct-cost").forEach((button) => button.addEventListener("click", () => openCorrectionDialog(button.dataset.operationId)));
   $$(".delete-op").forEach((button) => button.addEventListener("click", () => deleteOperation(button.dataset.operationId)));
   refreshIcons();
+}
+
+function renderWorkspaceView() {
+  $$('[data-workspace-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.workspacePanel !== state.workspaceView;
+  });
+  $$('[data-workspace-view]').forEach((button) => {
+    const active = button.dataset.workspaceView === state.workspaceView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
 }
 
 function render() {
@@ -390,6 +444,7 @@ function render() {
     renderTSimulation();
     renderCostChart();
     renderHistory();
+    renderWorkspaceView();
   } else if (state.costChart) {
     state.costChart.destroy();
     state.costChart = null;
@@ -436,27 +491,22 @@ async function saveTrade(event) {
   $("#tradeForm").reset();
   $("#tradeDate").value = localDateTimeValue();
   render();
-  toast(`${operation.type === "buy" ? "买入" : "卖出"}记录已保存`);
+  const matchedShares = selectedLedger().tMatches
+    .filter((match) => match.buyOperationId === operation.id || match.sellOperationId === operation.id)
+    .reduce((sum, match) => sum + match.shares, 0);
+  toast(matchedShares > 0
+    ? `${operation.type === "buy" ? "买入" : "卖出"}已保存，自动识别当日做 T ${integer(matchedShares)}`
+    : `${operation.type === "buy" ? "买入" : "卖出"}记录已保存`);
 }
 
-async function saveT(event) {
-  event.preventDefault();
-  const stock = selectedStock();
-  const ledger = selectedLedger();
-  const operation = {
-    id: uid("t"), stockId: stock.id, type: "t", mode: state.tMode,
-    sellPrice: Number($("#tSellPrice").value), buyPrice: Number($("#tBuyPrice").value), shares: Number($("#tShares").value),
-    date: new Date($("#tDate").value).toISOString(), note: $("#tNote").value.trim(),
-  };
-  const result = calculateTSimulation(ledger, operation, stock.code, state.settings);
-  if (!result.valid) return toast(result.reason || "请检查输入", "error");
-  await db.putOperation(operation);
-  state.operations.push(operation);
-  state.historyPage = 1;
-  $("#tForm").reset();
-  $("#tDate").value = localDateTimeValue();
+async function clearLegacySimulations() {
+  const simulations = selectedOperations().filter((operation) => operation.type === "t");
+  if (!simulations.length || !window.confirm(`删除 ${simulations.length} 条旧版做 T 测算记录？真实买卖记录不会受影响。`)) return;
+  await Promise.all(simulations.map((operation) => db.deleteOperation(operation.id)));
+  const ids = new Set(simulations.map((operation) => operation.id));
+  state.operations = state.operations.filter((operation) => !ids.has(operation.id));
   render();
-  toast("做 T 记录已保存，持仓成本已更新");
+  toast("旧版测算记录已清理");
 }
 
 function openCorrectionDialog(id) {
@@ -598,7 +648,8 @@ function bindEvents() {
   $("#emptyAddButton").addEventListener("click", showStockDialog);
   $("#stockForm").addEventListener("submit", createStock);
   $("#tradeForm").addEventListener("submit", saveTrade);
-  $("#tForm").addEventListener("submit", saveT);
+  $("#tForm").addEventListener("submit", (event) => event.preventDefault());
+  $("#clearLegacySimulations").addEventListener("click", clearLegacySimulations);
   $("#correctionForm").addEventListener("submit", saveCorrection);
   $("#removeCorrectionButton").addEventListener("click", removeCorrection);
   $("#settingsButton").addEventListener("click", showSettingsDialog);
@@ -624,9 +675,11 @@ function bindEvents() {
     $("#tradeForm").classList.toggle("sell-mode", state.tradeType === "sell");
     renderTradePreview();
   }));
-  $$("[data-t-mode]").forEach((button) => button.addEventListener("click", () => {
-    state.tMode = button.dataset.tMode;
-    $$("[data-t-mode]").forEach((item) => item.classList.toggle("active", item === button));
+  $$("[data-workspace-view]").forEach((button) => button.addEventListener("click", () => {
+    state.workspaceView = button.dataset.workspaceView;
+    renderWorkspaceView();
+    if (state.workspaceView === "simulation") renderTSimulation();
+    refreshIcons();
   }));
   ["#tradePrice", "#tradeShares"].forEach((selector) => $(selector).addEventListener("input", renderTradePreview));
   ["#tSellPrice", "#tBuyPrice", "#tShares"].forEach((selector) => $(selector).addEventListener("input", renderTSimulation));
