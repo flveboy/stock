@@ -18,19 +18,29 @@ export function tradingDateKey(value) {
   return shanghaiDayFormatter.format(new Date(value));
 }
 
-export function calculateFees({ type, price, shares, stockCode = "" }, settings = DEFAULT_SETTINGS) {
+export function calculateFees({ type, price, shares, stockCode = "", actualFees = {} }, settings = DEFAULT_SETTINGS) {
   const tradePrice = number(price);
   const tradeShares = number(shares);
   const amount = tradePrice * tradeShares;
   if (amount <= 0) {
-    return { amount: 0, commission: 0, transfer: 0, stamp: 0, total: 0 };
+    return { amount: 0, commission: 0, transfer: 0, stamp: 0, total: 0, overridden: [] };
   }
 
-  const commission = Math.max(amount * number(settings.commissionRate), number(settings.minCommission));
+  const automaticCommission = Math.max(amount * number(settings.commissionRate), number(settings.minCommission));
   const shouldChargeTransfer = !settings.shOnlyTransfer || String(stockCode).startsWith("6");
-  const transfer = shouldChargeTransfer ? amount * number(settings.transferRate) : 0;
-  const stamp = type === "sell" ? amount * number(settings.stampRate) : 0;
-  return { amount, commission, transfer, stamp, total: commission + transfer + stamp };
+  const automaticTransfer = shouldChargeTransfer ? amount * number(settings.transferRate) : 0;
+  const automaticStamp = type === "sell" ? amount * number(settings.stampRate) : 0;
+  const override = (key, fallback) => Object.hasOwn(actualFees, key)
+    && actualFees[key] !== null
+    && actualFees[key] !== ""
+    && Number.isFinite(Number(actualFees[key]))
+    ? number(actualFees[key])
+    : fallback;
+  const commission = override("commission", automaticCommission);
+  const transfer = override("transfer", automaticTransfer);
+  const stamp = override("stamp", automaticStamp);
+  const overridden = ["commission", "transfer", "stamp"].filter((key) => Object.hasOwn(actualFees, key));
+  return { amount, commission, transfer, stamp, total: commission + transfer + stamp, overridden };
 }
 
 export function calculateTradePreview(position, trade, stockCode, settings = DEFAULT_SETTINGS) {
@@ -104,7 +114,7 @@ export function calculateTSimulation(position, tTrade, stockCode, settings = DEF
 export function matchActualTTrades(entries) {
   const tradesByDay = new Map();
   entries
-    .filter((entry) => entry.valid && (entry.type === "buy" || entry.type === "sell"))
+    .filter((entry) => entry.valid && !entry.excludeFromT && (entry.type === "buy" || entry.type === "sell"))
     .forEach((entry) => {
       const day = tradingDateKey(entry.date);
       if (!tradesByDay.has(day)) tradesByDay.set(day, []);

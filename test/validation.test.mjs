@@ -22,8 +22,11 @@ test("validates normal trades and complete T trades", () => {
   assert.equal(validateOperation(buy), buy);
   assert.equal(validateOperation(tTrade), tTrade);
   assert.equal(validateOperation({ ...buy, correctedCost: -1.25 }).correctedCost, -1.25);
+  assert.equal(validateOperation({ ...buy, actualFees: { commission: 0, transfer: 0, stamp: 0 }, excludeFromT: true }).excludeFromT, true);
   assert.throws(() => validateOperation({ ...buy, shares: 0 }), /成交股数无效/);
   assert.throws(() => validateOperation({ ...buy, correctedCost: "bad" }), /修正成本无效/);
+  assert.throws(() => validateOperation({ ...buy, actualFees: { commission: -1 } }), /实际费用无效/);
+  assert.throws(() => validateOperation({ ...buy, excludeFromT: "yes" }), /排除标记无效/);
 });
 
 test("validates fee settings and backup structure", () => {

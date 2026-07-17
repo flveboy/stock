@@ -136,3 +136,33 @@ test("legacy saved T simulations no longer change holdings or actual T totals", 
 test("trading day keys use Shanghai time around UTC midnight", () => {
   assert.equal(tradingDateKey("2026-07-16T16:30:00Z"), "2026-07-17");
 });
+
+test("actual broker fees override calculated fees and cost basis", () => {
+  const fees = calculateFees({
+    type: "buy",
+    price: 10,
+    shares: 100,
+    stockCode: "600000",
+    actualFees: { commission: 2.5, transfer: 0, stamp: 0 },
+  });
+  assert.equal(fees.total, 2.5);
+  assert.deepEqual(fees.overridden, ["commission", "transfer", "stamp"]);
+
+  const preview = calculateTradePreview(
+    { shares: 1000, costAmount: 10000 },
+    { type: "buy", price: 10, shares: 100, actualFees: { commission: 2.5, transfer: 0, stamp: 0 } },
+    "600000",
+  );
+  assert.equal(preview.costAmount, 11002.5);
+});
+
+test("trades excluded from T remain in holdings but are not matched", () => {
+  const stock = { code: "000001", openingShares: 1000, openingCost: 10 };
+  const ledger = buildLedger(stock, [
+    { id: "sell", type: "sell", price: 12, shares: 100, excludeFromT: true, date: "2026-07-17T01:35:00Z" },
+    { id: "buy", type: "buy", price: 11, shares: 100, date: "2026-07-17T06:45:00Z" },
+  ], DEFAULT_SETTINGS);
+  assert.equal(ledger.tCount, 0);
+  assert.equal(ledger.tradeEntries.length, 2);
+  assert.ok(Math.abs(ledger.cost - 9.9106) < 1e-9);
+});

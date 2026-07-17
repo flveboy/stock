@@ -26,7 +26,8 @@ const state = {
   historyDate: "",
   historyPage: 1,
   historyPageSize: 6,
-  correctionOperationId: null,
+  editingOperationId: null,
+  editingOperationType: "buy",
   costChart: null,
 };
 
@@ -77,6 +78,7 @@ async function loadRemoteData() {
   state.stocks = payload.stocks || [];
   state.operations = payload.operations || [];
   state.settings = { ...DEFAULT_SETTINGS, ...(payload.settings || {}) };
+  $("#versionBadge").textContent = `v${payload.version || "2.2.0"}`;
   state.selectedStockId = state.stocks.some((stock) => stock.id === state.selectedStockId)
     ? state.selectedStockId
     : state.stocks[0]?.id || null;
@@ -398,6 +400,7 @@ function renderHistory() {
         <div class="t-summary-icon"><i data-lucide="repeat-2"></i></div>
         <div><strong>实际做 T · ${mode}</strong><span>自动匹配 ${integer(summary.shares)} · ${summary.pairCount} 组买卖</span></div>
         <div class="t-summary-profit"><span>扣费后收益</span><strong class="${summary.profit >= 0 ? "positive" : "negative"}">${money(summary.profit)}</strong></div>
+        <button class="icon-button view-t-match" data-t-day="${day}" type="button" aria-label="查看做 T 撮合明细" title="查看做 T 撮合明细"><i data-lucide="list-tree"></i></button>
       </div>`;
     })() : ""}
     <div class="history-rows">${dayEntries.map((entry) => {
@@ -405,18 +408,19 @@ function renderHistory() {
       const delta = entry.costDelta;
       const detail = !entry.valid
         ? `${operationDetail(entry)} · ${calculation.reason || "记录无法计入当前持仓"}`
-        : `${operationDetail(entry)} · 费用 ${money(calculation.fees.total)}`;
+        : `${operationDetail(entry)} · ${calculation.fees.overridden.length ? "券商实际费用" : "费用"} ${money(calculation.fees.total)}${entry.excludeFromT ? " · 不参与做 T" : ""}`;
       return `<article class="history-row ${entry.corrected ? "corrected-row" : ""}">
         <div class="op-icon ${entry.type}"><i data-lucide="${entry.type === "buy" ? "arrow-down-left" : "arrow-up-right"}"></i></div>
         <div class="op-main"><div class="op-title"><strong>${operationTitle(entry)}</strong><span>${dateTime(entry.date)}</span></div><p>${detail}</p>${entry.note ? `<small>${escapeHtml(entry.note)}</small>` : ""}</div>
         <div class="op-result"><span>${entry.valid ? (entry.corrected ? "修正后成本" : "操作后成本") : "未计入成本"}</span><strong>${price(entry.afterCost)}</strong>${entry.valid ? `<small class="${delta <= 0 ? "positive" : "negative"}">${delta <= 0 ? "降低" : "增加"} ${price(Math.abs(delta))}</small>${entry.corrected ? `<small class="corrected-note">自动值 ${price(entry.automaticAfterCost)}</small>` : ""}` : `<small class="negative">记录无效</small>`}</div>
         <div class="op-actions">
-          ${entry.valid && entry.afterShares > 0 ? `<button class="icon-button correct-cost" data-operation-id="${entry.id}" type="button" aria-label="修正操作后成本" title="修正操作后成本"><i data-lucide="pencil-line"></i></button>` : ""}
+          <button class="icon-button edit-operation" data-operation-id="${entry.id}" type="button" aria-label="编辑交易记录" title="编辑交易记录"><i data-lucide="square-pen"></i></button>
           <button class="icon-button delete-op" data-operation-id="${entry.id}" type="button" aria-label="删除这条记录" title="删除这条记录"><i data-lucide="trash-2"></i></button>
         </div>
       </article>`;
     }).join("")}</div></div>`).join("");
-  $$(".correct-cost").forEach((button) => button.addEventListener("click", () => openCorrectionDialog(button.dataset.operationId)));
+  $$(".edit-operation").forEach((button) => button.addEventListener("click", () => openEditOperation(button.dataset.operationId)));
+  $$(".view-t-match").forEach((button) => button.addEventListener("click", () => openTMatchDialog(button.dataset.tDay)));
   $$(".delete-op").forEach((button) => button.addEventListener("click", () => deleteOperation(button.dataset.operationId)));
   refreshIcons();
 }
@@ -509,47 +513,108 @@ async function clearLegacySimulations() {
   toast("旧版测算记录已清理");
 }
 
-function openCorrectionDialog(id) {
-  const entry = selectedLedger()?.entries.find((item) => item.id === id);
-  if (!entry || !entry.valid || entry.afterShares <= 0) return;
-  state.correctionOperationId = id;
-  $("#correctionOperationSummary").textContent = `${operationTitle(entry)} · ${dateTime(entry.date)} · 操作后 ${integer(entry.afterShares)}`;
-  $("#automaticCostValue").textContent = price(entry.automaticAfterCost);
-  $("#currentCostValue").textContent = price(entry.afterCost);
-  $("#correctedCostInput").value = Number(entry.afterCost).toFixed(4);
-  $("#removeCorrectionButton").hidden = !entry.corrected;
-  $("#correctionDialog").showModal();
-  window.setTimeout(() => $("#correctedCostInput").select(), 50);
+function setEditingOperationType(type) {
+  state.editingOperationType = type;
+  $$('[data-edit-type]').forEach((button) => {
+    button.classList.toggle("active", button.dataset.editType === type);
+    button.classList.toggle("buy", button.dataset.editType === "buy");
+  });
 }
 
-async function saveCorrection(event) {
-  event.preventDefault();
-  const id = state.correctionOperationId;
+function openEditOperation(id) {
   const operation = state.operations.find((item) => item.id === id);
-  const rawValue = $("#correctedCostInput").value.trim();
-  const correctedCost = Number(rawValue);
-  if (!operation || !rawValue || !Number.isFinite(correctedCost)) return toast("请输入有效的修正成本", "error");
+  if (!operation || operation.type === "t") return;
+  state.editingOperationId = id;
+  setEditingOperationType(operation.type);
+  $("#editOperationSummary").textContent = `${operationTitle(operation)} · ${dateTime(operation.date)} · 修改后重新计算全部后续记录`;
+  $("#editPrice").value = operation.price;
+  $("#editShares").value = operation.shares;
+  $("#editDate").value = localDateTimeValue(new Date(operation.date));
+  $("#editNote").value = operation.note || "";
+  $("#editCorrectedCost").value = operation.correctedCost ?? "";
+  $("#editExcludeFromT").checked = Boolean(operation.excludeFromT);
 
-  const updated = { ...operation, correctedCost };
-  await db.putOperation(updated);
-  state.operations = state.operations.map((item) => item.id === id ? updated : item);
-  $("#correctionDialog").close();
-  state.correctionOperationId = null;
-  render();
-  toast("成本修正已保存，后续记录已重新计算");
+  const automaticFees = calculateFees({ ...operation, actualFees: {}, stockCode: selectedStock().code }, state.settings);
+  const feeFields = [
+    ["#editCommission", "commission"],
+    ["#editTransfer", "transfer"],
+    ["#editStamp", "stamp"],
+  ];
+  feeFields.forEach(([selector, key]) => {
+    $(selector).value = operation.actualFees?.[key] ?? "";
+    $(selector).placeholder = `自动 ${automaticFees[key].toFixed(2)}`;
+  });
+  $("#editOperationDialog").showModal();
+  window.setTimeout(() => $("#editPrice").select(), 50);
 }
 
-async function removeCorrection() {
-  const id = state.correctionOperationId;
+function optionalNumber(selector) {
+  const value = $(selector).value.trim();
+  return value === "" ? undefined : Number(value);
+}
+
+async function saveEditedOperation(event) {
+  event.preventDefault();
+  const id = state.editingOperationId;
   const operation = state.operations.find((item) => item.id === id);
   if (!operation) return;
-  const { correctedCost: _removed, ...updated } = operation;
+  const actualFees = {
+    commission: optionalNumber("#editCommission"),
+    transfer: optionalNumber("#editTransfer"),
+    stamp: optionalNumber("#editStamp"),
+  };
+  if (Object.values(actualFees).some((value) => value !== undefined && (!Number.isFinite(value) || value < 0))) {
+    return toast("实际费用必须是大于或等于 0 的数字", "error");
+  }
+  Object.keys(actualFees).forEach((key) => actualFees[key] === undefined && delete actualFees[key]);
+  const correctedCost = optionalNumber("#editCorrectedCost");
+  if (correctedCost !== undefined && !Number.isFinite(correctedCost)) return toast("成本修正值无效", "error");
+  const updated = {
+    ...operation,
+    type: state.editingOperationType,
+    price: Number($("#editPrice").value),
+    shares: Number($("#editShares").value),
+    date: new Date($("#editDate").value).toISOString(),
+    note: $("#editNote").value.trim(),
+    excludeFromT: $("#editExcludeFromT").checked,
+  };
+  if (Object.keys(actualFees).length) updated.actualFees = actualFees;
+  else delete updated.actualFees;
+  if (correctedCost !== undefined) updated.correctedCost = correctedCost;
+  else delete updated.correctedCost;
+
+  const candidateOperations = state.operations.map((item) => item.id === id ? updated : item);
+  const candidateLedger = buildLedger(selectedStock(), candidateOperations.filter((item) => item.stockId === selectedStock().id), state.settings);
+  const existingInvalidIds = new Set(selectedLedger().tradeEntries.filter((entry) => !entry.valid).map((entry) => entry.id));
+  const invalidEntry = candidateLedger.tradeEntries.find((entry) => !entry.valid && (entry.id === id || !existingInvalidIds.has(entry.id)));
+  if (invalidEntry) return toast(`${operationTitle(invalidEntry)}记录无效：${invalidEntry.calculation.reason || "请检查成交数据"}`, "error");
+
   await db.putOperation(updated);
   state.operations = state.operations.map((item) => item.id === id ? updated : item);
-  $("#correctionDialog").close();
-  state.correctionOperationId = null;
+  $("#editOperationDialog").close();
+  state.editingOperationId = null;
   render();
-  toast("已取消修正，成本恢复为自动计算值");
+  toast("交易记录已更新，成本和做 T 撮合已重新计算");
+}
+
+function openTMatchDialog(day) {
+  const ledger = selectedLedger();
+  const summary = ledger.tSummaries.find((item) => item.day === day);
+  const matches = ledger.tMatches.filter((match) => match.day === day);
+  if (!summary || !matches.length) return;
+  $("#tMatchSummary").textContent = `${dateOnly(`${day}T00:00:00+08:00`)} · 匹配 ${integer(summary.shares)} · 扣费后收益 ${money(summary.profit)}`;
+  $("#tMatchList").innerHTML = matches.map((match) => {
+    const buy = ledger.tradeEntries.find((entry) => entry.id === match.buyOperationId);
+    const sell = ledger.tradeEntries.find((entry) => entry.id === match.sellOperationId);
+    return `<article class="t-match-item">
+      <div class="t-match-leg"><span>卖出</span><strong>${price(match.sellPrice)} × ${integer(match.shares)}</strong><small>${dateTime(sell.date)}</small></div>
+      <i data-lucide="arrow-right"></i>
+      <div class="t-match-leg"><span>买入</span><strong>${price(match.buyPrice)} × ${integer(match.shares)}</strong><small>${dateTime(buy.date)}</small></div>
+      <div class="t-match-result"><span>扣费后收益</span><strong class="${match.profit >= 0 ? "positive" : "negative"}">${money(match.profit)}</strong></div>
+    </article>`;
+  }).join("");
+  $("#tMatchDialog").showModal();
+  refreshIcons();
 }
 
 async function deleteOperation(id) {
@@ -650,8 +715,7 @@ function bindEvents() {
   $("#tradeForm").addEventListener("submit", saveTrade);
   $("#tForm").addEventListener("submit", (event) => event.preventDefault());
   $("#clearLegacySimulations").addEventListener("click", clearLegacySimulations);
-  $("#correctionForm").addEventListener("submit", saveCorrection);
-  $("#removeCorrectionButton").addEventListener("click", removeCorrection);
+  $("#editOperationForm").addEventListener("submit", saveEditedOperation);
   $("#settingsButton").addEventListener("click", showSettingsDialog);
   $("#settingsForm").addEventListener("submit", saveSettings);
   $("#resetSettingsButton").addEventListener("click", resetSettings);
@@ -681,6 +745,7 @@ function bindEvents() {
     if (state.workspaceView === "simulation") renderTSimulation();
     refreshIcons();
   }));
+  $$("[data-edit-type]").forEach((button) => button.addEventListener("click", () => setEditingOperationType(button.dataset.editType)));
   ["#tradePrice", "#tradeShares"].forEach((selector) => $(selector).addEventListener("input", renderTradePreview));
   ["#tSellPrice", "#tBuyPrice", "#tShares"].forEach((selector) => $(selector).addEventListener("input", renderTSimulation));
   window.addEventListener("auth-required", () => showLogin("登录已失效，请重新登录"));

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
@@ -9,6 +10,7 @@ import { createStorage } from "./storage.js";
 import { validateImport, validateOperation, validateSettings, validateStock } from "./validation.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const appVersion = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
 const port = Number(process.env.PORT || 3000);
 const appPassword = process.env.APP_PASSWORD || "";
 const databaseUrl = process.env.DATABASE_URL || "";
@@ -76,7 +78,7 @@ function asyncRoute(handler) {
 
 app.get("/api/health", asyncRoute(async (_req, res) => {
   await Promise.all([storage.health(), redis.ping()]);
-  res.json({ status: "ok", database: "postgresql", cache: "redis" });
+  res.json({ status: "ok", version: appVersion, database: "postgresql", cache: "redis" });
 }));
 
 app.post("/api/auth/login", loginLimiter, asyncRoute(async (req, res) => {
@@ -93,10 +95,11 @@ app.post("/api/auth/logout", requireAuth, asyncRoute(async (req, res) => {
 
 app.get("/api/bootstrap", requireAuth, asyncRoute(async (_req, res) => {
   const cached = await redis.get(cacheKey);
-  if (cached) return res.json(JSON.parse(cached));
+  if (cached) return res.json({ ...JSON.parse(cached), version: appVersion });
   const data = await storage.getBootstrap();
-  await redis.set(cacheKey, JSON.stringify(data), { EX: 60 });
-  res.json(data);
+  const payload = { ...data, version: appVersion };
+  await redis.set(cacheKey, JSON.stringify(payload), { EX: 60 });
+  res.json(payload);
 }));
 
 app.put("/api/stocks/:id", requireAuth, asyncRoute(async (req, res) => {

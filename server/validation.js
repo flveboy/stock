@@ -35,6 +35,17 @@ export function validateOperation(operation) {
     && !Number.isFinite(toNumber(operation.correctedCost))) {
     invalid("修正成本无效");
   }
+  if (operation.actualFees !== undefined && operation.actualFees !== null) {
+    if (typeof operation.actualFees !== "object" || Array.isArray(operation.actualFees)) invalid("实际费用格式无效");
+    for (const key of ["commission", "transfer", "stamp"]) {
+      if (operation.actualFees[key] !== undefined
+        && operation.actualFees[key] !== null
+        && (!Number.isFinite(toNumber(operation.actualFees[key])) || toNumber(operation.actualFees[key]) < 0)) {
+        invalid(`${key} 实际费用无效`);
+      }
+    }
+  }
+  if (operation.excludeFromT !== undefined && typeof operation.excludeFromT !== "boolean") invalid("做 T 排除标记无效");
   return operation;
 }
 

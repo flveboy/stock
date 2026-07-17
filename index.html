@@ -54,6 +54,7 @@
           <div class="skeleton-title">请选择一只股票</div>
         </div>
         <div class="topbar-actions">
+          <span class="version-badge" id="versionBadge">v2.2.0</span>
           <span class="save-state" id="saveState"><i data-lucide="database"></i>已连接 NAS 数据库</span>
           <button class="icon-button" id="deleteStockButton" type="button" aria-label="删除当前股票" title="删除当前股票" disabled>
             <i data-lucide="trash-2"></i>
@@ -308,28 +309,52 @@
     </form>
   </dialog>
 
-  <dialog id="correctionDialog" class="modal correction-modal">
-    <form method="dialog" id="correctionForm">
+  <dialog id="editOperationDialog" class="modal operation-modal">
+    <form method="dialog" id="editOperationForm">
       <div class="modal-head">
-        <div><h2>修正操作后成本</h2><p id="correctionOperationSummary">将券商显示成本作为后续计算起点</p></div>
+        <div><h2>编辑交易记录</h2><p id="editOperationSummary">修改后将重新计算后续成本和做 T 撮合</p></div>
         <button class="icon-button dialog-close" type="button" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button>
       </div>
       <div class="modal-body form-stack">
-        <div class="correction-comparison">
-          <div><span>自动计算</span><strong id="automaticCostValue">--</strong></div>
-          <i data-lucide="arrow-right"></i>
-          <div><span>当前采用</span><strong id="currentCostValue">--</strong></div>
+        <div class="segmented edit-type-tabs" aria-label="交易方向">
+          <button class="active buy" data-edit-type="buy" type="button">买入</button>
+          <button data-edit-type="sell" type="button">卖出</button>
         </div>
-        <label><span>修正后的每股成本</span><div class="input-affix"><span>¥</span><input id="correctedCostInput" type="number" step="0.0001" inputmode="decimal" required></div></label>
-        <div class="info-callout"><i data-lucide="git-commit-horizontal"></i><span>修正只改变该条记录之后的成本基准，不会改变成交价格、股数和手续费。</span></div>
+        <div class="form-grid two">
+          <label><span>成交价格</span><div class="input-affix"><span>¥</span><input id="editPrice" type="number" min="0" step="0.0001" inputmode="decimal" required></div></label>
+          <label><span>成交股数</span><div class="input-affix suffix"><input id="editShares" type="number" min="1" step="1" inputmode="numeric" required><span>股</span></div></label>
+        </div>
+        <div class="form-grid two">
+          <label><span>成交时间</span><input id="editDate" type="datetime-local" required></label>
+          <label><span>备注</span><input id="editNote" type="text" maxlength="80"></label>
+        </div>
+        <div class="edit-section">
+          <div class="edit-section-head"><strong>券商实际费用</strong><span>留空时使用费率设置自动计算</span></div>
+          <div class="form-grid three equal">
+            <label><span>佣金</span><div class="input-affix"><span>¥</span><input id="editCommission" type="number" min="0" step="0.01" inputmode="decimal"></div></label>
+            <label><span>过户费</span><div class="input-affix"><span>¥</span><input id="editTransfer" type="number" min="0" step="0.01" inputmode="decimal"></div></label>
+            <label><span>印花税</span><div class="input-affix"><span>¥</span><input id="editStamp" type="number" min="0" step="0.01" inputmode="decimal"></div></label>
+          </div>
+        </div>
+        <div class="form-grid two edit-options">
+          <label><span>操作后成本修正</span><div class="input-affix"><span>¥</span><input id="editCorrectedCost" type="number" step="0.0001" inputmode="decimal" placeholder="留空为自动计算"></div></label>
+          <label class="switch-row compact-switch"><span><strong>不参与做 T 撮合</strong><small>仍正常计算持仓和成本</small></span><input id="editExcludeFromT" type="checkbox" role="switch"></label>
+        </div>
       </div>
-      <div class="modal-actions split-actions">
-        <button class="ghost-button danger-text" id="removeCorrectionButton" value="cancel" type="button" hidden>取消修正</button>
-        <span class="action-spacer"></span>
+      <div class="modal-actions">
         <button class="ghost-button dialog-close" value="cancel" type="button">取消</button>
-        <button class="primary-button" value="default" type="submit"><i data-lucide="save"></i><span>保存修正</span></button>
+        <button class="primary-button" value="default" type="submit"><i data-lucide="save"></i><span>保存修改</span></button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="tMatchDialog" class="modal t-match-modal">
+    <div class="modal-head">
+      <div><h2>实际做 T 撮合明细</h2><p id="tMatchSummary">按同一交易日的真实买卖自动撮合</p></div>
+      <button class="icon-button dialog-close" type="button" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body t-match-list" id="tMatchList"></div>
+    <div class="modal-actions"><button class="primary-button dialog-close" type="button">完成</button></div>
   </dialog>
 
   <input id="importFileInput" type="file" accept="application/json,.json" hidden>
